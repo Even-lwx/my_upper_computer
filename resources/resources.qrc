@@ -1,0 +1,9 @@
+<RCC>
+    <qresource prefix="/themes">
+        <file>themes/professional_dark.qss</file>
+    </qresource>
+
+    <qresource prefix="/icons">
+        <!-- 将来添加的图标文件 -->
+    </qresource>
+</RCC>

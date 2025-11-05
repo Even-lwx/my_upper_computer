@@ -1,0 +1,46 @@
+# 编译输出
+build/
+build_imgui/
+build_qt/
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+
+# IDE
+.vscode/
+.idea/
+*.user
+*.suo
+*.sln
+*.vcxproj
+*.vcxproj.filters
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# 编译中间文件
+*.o
+*.obj
+*.pch
+
+# Qt
+*.qrc.cpp
+*.moc
+ui_*.h
+moc_*.cpp
+qrc_*.cpp
+
+# 日志文件
+*.log
+logs/
+
+# 其他
+.DS_Store
+Thumbs.db

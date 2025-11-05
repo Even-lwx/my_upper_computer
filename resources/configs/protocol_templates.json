@@ -1,0 +1,199 @@
+{
+  "protocols": [
+    {
+      "name": "示例协议1 - 温湿度传感器",
+      "description": "DHT11温湿度传感器数据协议",
+      "header": "AA 55",
+      "footer": "",
+      "length": 8,
+      "fields": [
+        {
+          "name": "帧头",
+          "offset": 0,
+          "length": 2,
+          "type": "hex",
+          "description": "固定值 0xAA55"
+        },
+        {
+          "name": "温度整数",
+          "offset": 2,
+          "length": 1,
+          "type": "uint8",
+          "unit": "°C",
+          "description": "温度整数部分"
+        },
+        {
+          "name": "温度小数",
+          "offset": 3,
+          "length": 1,
+          "type": "uint8",
+          "unit": "°C",
+          "description": "温度小数部分"
+        },
+        {
+          "name": "湿度整数",
+          "offset": 4,
+          "length": 1,
+          "type": "uint8",
+          "unit": "%",
+          "description": "湿度整数部分"
+        },
+        {
+          "name": "湿度小数",
+          "offset": 5,
+          "length": 1,
+          "type": "uint8",
+          "unit": "%",
+          "description": "湿度小数部分"
+        },
+        {
+          "name": "校验和",
+          "offset": 6,
+          "length": 2,
+          "type": "checksum",
+          "checksumType": "CRC16",
+          "description": "CRC16校验"
+        }
+      ]
+    },
+    {
+      "name": "示例协议2 - 电机控制",
+      "description": "步进电机控制指令",
+      "header": "FE FE",
+      "footer": "FF",
+      "length": 10,
+      "fields": [
+        {
+          "name": "帧头",
+          "offset": 0,
+          "length": 2,
+          "type": "hex",
+          "description": "固定值 0xFEFE"
+        },
+        {
+          "name": "设备地址",
+          "offset": 2,
+          "length": 1,
+          "type": "uint8",
+          "description": "设备ID"
+        },
+        {
+          "name": "命令类型",
+          "offset": 3,
+          "length": 1,
+          "type": "uint8",
+          "description": "0x01=启动 0x02=停止"
+        },
+        {
+          "name": "速度",
+          "offset": 4,
+          "length": 2,
+          "type": "uint16",
+          "unit": "rpm",
+          "description": "转速（大端序）"
+        },
+        {
+          "name": "步数",
+          "offset": 6,
+          "length": 2,
+          "type": "uint16",
+          "description": "步进数（大端序）"
+        },
+        {
+          "name": "校验和",
+          "offset": 8,
+          "length": 1,
+          "type": "checksum",
+          "checksumType": "XOR",
+          "description": "异或校验"
+        },
+        {
+          "name": "帧尾",
+          "offset": 9,
+          "length": 1,
+          "type": "hex",
+          "description": "固定值 0xFF"
+        }
+      ]
+    },
+    {
+      "name": "示例协议3 - MODBUS RTU",
+      "description": "标准MODBUS RTU读取保持寄存器",
+      "header": "",
+      "footer": "",
+      "length": 8,
+      "fields": [
+        {
+          "name": "从机地址",
+          "offset": 0,
+          "length": 1,
+          "type": "uint8",
+          "description": "从机ID (1-247)"
+        },
+        {
+          "name": "功能码",
+          "offset": 1,
+          "length": 1,
+          "type": "uint8",
+          "description": "0x03=读保持寄存器"
+        },
+        {
+          "name": "起始地址高字节",
+          "offset": 2,
+          "length": 1,
+          "type": "uint8",
+          "description": "寄存器地址高字节"
+        },
+        {
+          "name": "起始地址低字节",
+          "offset": 3,
+          "length": 1,
+          "type": "uint8",
+          "description": "寄存器地址低字节"
+        },
+        {
+          "name": "寄存器数量高字节",
+          "offset": 4,
+          "length": 1,
+          "type": "uint8",
+          "description": "读取数量高字节"
+        },
+        {
+          "name": "寄存器数量低字节",
+          "offset": 5,
+          "length": 1,
+          "type": "uint8",
+          "description": "读取数量低字节"
+        },
+        {
+          "name": "CRC校验",
+          "offset": 6,
+          "length": 2,
+          "type": "checksum",
+          "checksumType": "CRC16_MODBUS",
+          "description": "CRC16 Modbus校验（小端序）"
+        }
+      ]
+    }
+  ],
+  "checksumTypes": {
+    "XOR": "所有字节异或",
+    "SUM": "所有字节累加求和",
+    "CRC8": "CRC8校验",
+    "CRC16": "CRC16校验（CCITT）",
+    "CRC16_MODBUS": "CRC16 Modbus校验",
+    "CRC32": "CRC32校验"
+  },
+  "dataTypes": {
+    "hex": "十六进制显示",
+    "uint8": "8位无符号整数",
+    "int8": "8位有符号整数",
+    "uint16": "16位无符号整数",
+    "int16": "16位有符号整数",
+    "uint32": "32位无符号整数",
+    "int32": "32位有符号整数",
+    "float": "32位浮点数",
+    "string": "字符串",
+    "checksum": "校验和"
+  }
+}
