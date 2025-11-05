@@ -16,6 +16,8 @@
 #include <vector>
 #include <string>
 #include <mutex>
+#include <fstream>
+#include <chrono>
 
 // Windows OpenGL
 #if defined(_WIN32)
@@ -55,6 +57,15 @@ struct AppState {
     // 统计信息
     int bytes_received = 0;
     int bytes_sent = 0;
+
+    // 日志功能
+    bool enable_logging = false;
+    std::string log_filename;
+
+    // 定时发送
+    bool enable_auto_send = false;
+    int auto_send_interval_ms = 1000;  // 默认1秒
+    std::chrono::steady_clock::time_point last_send_time;
 };
 
 // GLFW错误回调
@@ -240,6 +251,9 @@ void RenderSerialConfigPanel(AppState& state) {
                 if (state.serial_port.Open(config)) {
                     state.is_connected = true;
 
+                    // 初始化定时发送计时器
+                    state.last_send_time = std::chrono::steady_clock::now();
+
                     // 设置接收回调
                     state.serial_port.SetReceiveCallback([&state](const unsigned char* data, int length) {
                         std::lock_guard<std::mutex> lock(state.receive_mutex);
@@ -263,6 +277,23 @@ void RenderSerialConfigPanel(AppState& state) {
 
                         state.bytes_received += length;
                         state.scroll_to_bottom = true;
+
+                        // 写入日志文件
+                        if (state.enable_logging && !state.log_filename.empty()) {
+                            std::ofstream logFile(state.log_filename, std::ios::app);
+                            if (logFile.is_open()) {
+                                // 获取当前时间
+                                auto now = std::chrono::system_clock::now();
+                                auto now_c = std::chrono::system_clock::to_time_t(now);
+                                struct tm timeinfo;
+                                localtime_s(&timeinfo, &now_c);
+                                char timeStr[64];
+                                strftime(timeStr, sizeof(timeStr), "[%Y-%m-%d %H:%M:%S] ", &timeinfo);
+
+                                logFile << timeStr << dataStr << std::endl;
+                                logFile.close();
+                            }
+                        }
                     });
                 }
             }
@@ -291,6 +322,23 @@ void RenderDataDisplayPanel(AppState& state) {
     if (ImGui::Button("清空")) {
         state.receive_buffer[0] = '\0';
         state.bytes_received = 0;
+    }
+
+    // 日志控制
+    ImGui::Checkbox("保存日志", &state.enable_logging);
+    if (state.enable_logging && state.log_filename.empty()) {
+        // 自动生成日志文件名
+        auto now = std::chrono::system_clock::now();
+        auto now_c = std::chrono::system_clock::to_time_t(now);
+        struct tm timeinfo;
+        localtime_s(&timeinfo, &now_c);
+        char filename[128];
+        strftime(filename, sizeof(filename), "serial_log_%Y%m%d_%H%M%S.txt", &timeinfo);
+        state.log_filename = filename;
+    }
+    if (state.enable_logging) {
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.3f, 0.8f, 0.3f, 1.0f), "Logging: %s", state.log_filename.c_str());
     }
 
     ImGui::Separator();
@@ -322,6 +370,35 @@ void RenderSendPanel(AppState& state) {
 
     // 发送选项
     ImGui::Checkbox("HEX发送", &state.hex_send);
+
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    // 定时发送
+    ImGui::Text("定时发送:");
+    ImGui::Checkbox("启用定时发送", &state.enable_auto_send);
+
+    if (state.enable_auto_send) {
+        ImGui::Text("发送间隔(毫秒):");
+        ImGui::PushItemWidth(200);
+        ImGui::InputInt("##interval", &state.auto_send_interval_ms, 100, 1000);
+        ImGui::PopItemWidth();
+
+        // 限制间隔范围
+        if (state.auto_send_interval_ms < 100) state.auto_send_interval_ms = 100;
+        if (state.auto_send_interval_ms > 60000) state.auto_send_interval_ms = 60000;
+
+        // 显示下次发送倒计时
+        if (state.is_connected) {
+            auto now = std::chrono::steady_clock::now();
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - state.last_send_time).count();
+            int remaining = state.auto_send_interval_ms - elapsed;
+            if (remaining < 0) remaining = 0;
+            ImGui::TextColored(ImVec4(0.3f, 0.8f, 0.3f, 1.0f), "下次发送: %d ms", remaining);
+        } else {
+            ImGui::TextColored(ImVec4(0.8f, 0.3f, 0.3f, 1.0f), "未连接");
+        }
+    }
 
     ImGui::Separator();
 
@@ -412,6 +489,34 @@ int main(int, char**) {
     while (!glfwWindowShouldClose(window)) {
         // 处理事件
         glfwPollEvents();
+
+        // 定时发送逻辑
+        if (app_state.enable_auto_send && app_state.is_connected && app_state.send_buffer[0] != '\0') {
+            auto now = std::chrono::steady_clock::now();
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - app_state.last_send_time).count();
+
+            if (elapsed >= app_state.auto_send_interval_ms) {
+                // 执行发送
+                if (app_state.hex_send) {
+                    // HEX发送
+                    std::vector<unsigned char> hexData;
+                    if (DataConverter::HexStringToBytes(app_state.send_buffer, hexData)) {
+                        int sent = app_state.serial_port.Write(hexData.data(), hexData.size());
+                        if (sent > 0) {
+                            app_state.bytes_sent += sent;
+                        }
+                    }
+                } else {
+                    // ASCII发送
+                    int sent = app_state.serial_port.Write(app_state.send_buffer);
+                    if (sent > 0) {
+                        app_state.bytes_sent += sent;
+                    }
+                }
+                // 更新最后发送时间
+                app_state.last_send_time = now;
+            }
+        }
 
         // 开始ImGui帧
         ImGui_ImplOpenGL3_NewFrame();
