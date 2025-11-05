@@ -13,11 +13,18 @@
 #include <imgui_impl_opengl3.h>
 #include <stdio.h>
 #include <GLFW/glfw3.h>
+#include <vector>
+#include <string>
+#include <mutex>
 
 // Windows OpenGL
 #if defined(_WIN32)
 #include <windows.h>
 #endif
+
+// 串口和数据转换
+#include "SerialPort_Win.h"
+#include "DataConverter.h"
 
 // 应用程序状态
 struct AppState {
@@ -25,6 +32,7 @@ struct AppState {
     ImVec4 clear_color = ImVec4(0.10f, 0.12f, 0.15f, 1.00f);  // 背景色
 
     // 串口配置
+    std::vector<std::string> available_ports;  // 可用串口列表
     int selected_port_index = 0;
     int selected_baudrate_index = 7;  // 默认115200
     int selected_databits_index = 3;  // 默认8位
@@ -32,12 +40,17 @@ struct AppState {
     int selected_parity_index = 0;    // 默认无校验
     bool is_connected = false;
 
+    // 串口管理器
+    SerialPort_Win serial_port;
+    std::mutex receive_mutex;  // 接收数据互斥锁
+
     // 数据显示
     char receive_buffer[65536] = "";
     char send_buffer[1024] = "";
     bool hex_display = false;
     bool hex_send = false;
     bool auto_scroll = true;
+    bool scroll_to_bottom = false;  // 标记需要滚动到底部
 
     // 统计信息
     int bytes_received = 0;
@@ -147,13 +160,27 @@ void RenderSerialConfigPanel(AppState& state) {
 
     // 串口选择
     ImGui::Text("串口端口");
-    const char* ports[] = { "COM1", "COM2", "COM3", "COM4", "COM5" };
+
+    // 创建串口列表的char*数组供ImGui使用
+    std::vector<const char*> port_cstrs;
+    for (const auto& port : state.available_ports) {
+        port_cstrs.push_back(port.c_str());
+    }
+
     ImGui::PushItemWidth(300);
-    ImGui::Combo("##port", &state.selected_port_index, ports, IM_ARRAYSIZE(ports));
+    if (!state.available_ports.empty()) {
+        ImGui::Combo("##port", &state.selected_port_index, port_cstrs.data(), port_cstrs.size());
+    } else {
+        ImGui::Text("未找到串口");
+    }
     ImGui::PopItemWidth();
 
     if (ImGui::Button("刷新端口", ImVec2(300, 40))) {
-        // TODO: 刷新串口列表
+        // 刷新串口列表
+        state.available_ports = SerialPort_Win::EnumeratePorts();
+        if (state.selected_port_index >= (int)state.available_ports.size()) {
+            state.selected_port_index = 0;
+        }
     }
 
     ImGui::Separator();
@@ -190,8 +217,60 @@ void RenderSerialConfigPanel(AppState& state) {
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(button_color.x * 0.8f, button_color.y * 0.8f, button_color.z * 0.8f, 1.0f));
 
     if (ImGui::Button(state.is_connected ? "断开串口" : "连接串口", ImVec2(300, 50))) {
-        state.is_connected = !state.is_connected;
-        // TODO: 实际的串口连接/断开逻辑
+        if (!state.is_connected) {
+            // 连接串口
+            if (!state.available_ports.empty() && state.selected_port_index < (int)state.available_ports.size()) {
+                SerialConfig config;
+                config.portName = state.available_ports[state.selected_port_index];
+
+                // 波特率映射
+                const int baudrate_values[] = { 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600 };
+                config.baudRate = baudrate_values[state.selected_baudrate_index];
+
+                // 数据位映射
+                config.dataBits = 5 + state.selected_databits_index;
+
+                // 停止位映射
+                config.stopBits = 1 + state.selected_stopbits_index;
+
+                // 校验位映射
+                config.parity = state.selected_parity_index;
+
+                // 打开串口
+                if (state.serial_port.Open(config)) {
+                    state.is_connected = true;
+
+                    // 设置接收回调
+                    state.serial_port.SetReceiveCallback([&state](const unsigned char* data, int length) {
+                        std::lock_guard<std::mutex> lock(state.receive_mutex);
+
+                        // 转换数据
+                        std::string dataStr;
+                        if (state.hex_display) {
+                            dataStr = DataConverter::BytesToHexString(data, length, true);
+                        } else {
+                            dataStr = DataConverter::BytesToAsciiString(data, length, true);
+                        }
+
+                        // 追加到接收缓冲区
+                        size_t current_len = strlen(state.receive_buffer);
+                        size_t available_space = sizeof(state.receive_buffer) - current_len - 1;
+
+                        if (dataStr.length() < available_space) {
+                            strcat(state.receive_buffer, dataStr.c_str());
+                            strcat(state.receive_buffer, "\n");
+                        }
+
+                        state.bytes_received += length;
+                        state.scroll_to_bottom = true;
+                    });
+                }
+            }
+        } else {
+            // 断开串口
+            state.serial_port.Close();
+            state.is_connected = false;
+        }
     }
 
     ImGui::PopStyleColor(3);
@@ -221,6 +300,13 @@ void RenderDataDisplayPanel(AppState& state) {
     ImGui::InputTextMultiline("##receive", state.receive_buffer, sizeof(state.receive_buffer),
                                ImVec2(-FLT_MIN, ImGui::GetContentRegionAvail().y - 30),
                                ImGuiInputTextFlags_ReadOnly);
+
+    // 自动滚动到底部
+    if (state.auto_scroll && state.scroll_to_bottom) {
+        ImGui::SetScrollHereY(1.0f);
+        state.scroll_to_bottom = false;
+    }
+
     ImGui::PopStyleColor();
 
     // 统计信息
@@ -253,8 +339,22 @@ void RenderSendPanel(AppState& state) {
 
     if (ImGui::Button("发送数据", ImVec2(-FLT_MIN, 45))) {
         if (state.is_connected && state.send_buffer[0] != '\0') {
-            // TODO: 实际的发送逻辑
-            state.bytes_sent += strlen(state.send_buffer);
+            if (state.hex_send) {
+                // HEX发送
+                std::vector<unsigned char> hexData;
+                if (DataConverter::HexStringToBytes(state.send_buffer, hexData)) {
+                    int sent = state.serial_port.Write(hexData.data(), hexData.size());
+                    if (sent > 0) {
+                        state.bytes_sent += sent;
+                    }
+                }
+            } else {
+                // ASCII发送
+                int sent = state.serial_port.Write(state.send_buffer);
+                if (sent > 0) {
+                    state.bytes_sent += sent;
+                }
+            }
         }
     }
 
@@ -304,6 +404,9 @@ int main(int, char**) {
 
     // 应用程序状态
     AppState app_state;
+
+    // 初始化串口列表
+    app_state.available_ports = SerialPort_Win::EnumeratePorts();
 
     // 主循环
     while (!glfwWindowShouldClose(window)) {
