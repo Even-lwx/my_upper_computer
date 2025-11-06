@@ -134,8 +134,13 @@ if(WIN32)
         setupapi  # 串口枚举需要
     )
     set_target_properties(${PROJECT_NAME} PROPERTIES
-        WIN32_EXECUTABLE OFF  # 保留控制台窗口用于调试
+        WIN32_EXECUTABLE ON  # 隐藏控制台窗口
     )
+
+    # MinGW需要额外的链接选项来隐藏终端
+    if(MINGW)
+        target_link_options(${PROJECT_NAME} PRIVATE -mwindows)
+    endif()
 endif()
 
 # ========================================

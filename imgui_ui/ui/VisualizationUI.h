@@ -1,286 +1,263 @@
 /**
  * @file VisualizationUI.h
- * @brief 可视化UI管理器 - 整合所有可视化功能
+ * @brief VOFA+风格极简可视化UI
  * @author AI Assistant
  * @date 2025
  *
- * 功能：
- * - 整合组件库和工作区
- * - 实现拖拽创建组件
- * - 管理协议选择和通道配置
- * - 提供统一的UI入口
+ * 布局：
+ * - 左侧：极窄工具栏
+ * - 中间：大波形显示区
+ * - 右侧：紧凑通道列表
+ * - 底部：协议参数栏
  */
 
 #ifndef VISUALIZATION_UI_H
 #define VISUALIZATION_UI_H
 
-#include "ComponentLibrary.h"
-#include "WorkspaceManager.h"
 #include "../core/DataChannelManager.h"
 #include "../protocols/ProtocolParser.h"
 #include "../protocols/FireWaterParser.h"
 #include "../protocols/JustFloatParser.h"
 #include "../protocols/RawDataParser.h"
 #include "../protocols/CustomParser.h"
+#include <imgui.h>
+#include <implot.h>
 #include <memory>
 
 /**
- * @brief 可视化UI管理器
+ * @brief VOFA+风格可视化UI管理器
  */
 class VisualizationUI {
 public:
     VisualizationUI()
-        : show_component_library_(true)
-        , show_channel_config_(true)
-        , show_protocol_config_(true)
-        , current_protocol_type_(ProtocolType::FIREWATER)
+        : current_protocol_type_(ProtocolType::FIREWATER)
+        , auto_scale_y_(true)
     {
-        // 初始化默认协议解析器
         protocol_parser_ = std::make_unique<FireWaterParser>();
     }
 
     /**
-     * @brief 渲染所有UI
+     * @brief 渲染VOFA+风格UI（极简，单一窗口）
      */
     void Render() {
-        // 渲染组件库侧边栏
-        if (show_component_library_) {
-            component_library_.Render(workspace_manager_, &show_component_library_);
+        ImVec2 window_size = ImGui::GetIO().DisplaySize;
+        ImGui::SetNextWindowPos(ImVec2(0, 0));
+        ImGui::SetNextWindowSize(window_size);
+
+        ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+                                ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
+                                ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_MenuBar;
+
+        if (ImGui::Begin("##MainWindow", nullptr, flags)) {
+            // 顶部菜单栏
+            if (ImGui::BeginMenuBar()) {
+                ImGui::TextColored(ImVec4(0.26f, 0.59f, 0.98f, 1.0f), "串口调试助手 - 实时可视化");
+                ImGui::EndMenuBar();
+            }
+
+            ImVec2 content_size = ImGui::GetContentRegionAvail();
+
+            // === 左侧工具栏（20px） ===
+            ImGui::BeginChild("##Toolbar", ImVec2(20, content_size.y - 35), true, ImGuiWindowFlags_NoScrollbar);
+            RenderToolbar();
+            ImGui::EndChild();
+
+            ImGui::SameLine();
+
+            // === 中间波形区（主要区域） ===
+            float waveform_width = content_size.x - 220; // 减去左栏20px和右栏200px
+            ImGui::BeginChild("##Waveform", ImVec2(waveform_width, content_size.y - 35), true);
+            RenderWaveform();
+            ImGui::EndChild();
+
+            ImGui::SameLine();
+
+            // === 右侧通道列表（200px） ===
+            ImGui::BeginChild("##ChannelList", ImVec2(200, content_size.y - 35), true);
+            RenderChannelList();
+            ImGui::EndChild();
+
+            // === 底部参数栏（30px） ===
+            ImGui::BeginChild("##StatusBar", ImVec2(content_size.x, 30), true, ImGuiWindowFlags_NoScrollbar);
+            RenderStatusBar();
+            ImGui::EndChild();
         }
-
-        // 渲染工作区（拖拽目标）
-        RenderWorkspace();
-
-        // 渲染通道配置窗口
-        if (show_channel_config_) {
-            RenderChannelConfig();
-        }
-
-        // 渲染协议配置窗口
-        if (show_protocol_config_) {
-            RenderProtocolConfig();
-        }
-
-        // 渲染组件配置窗口
-        RenderWidgetConfigs();
+        ImGui::End();
     }
 
-    /**
-     * @brief 获取数据通道管理器
-     */
-    DataChannelManager& GetChannelManager() {
-        return channel_manager_;
-    }
+    DataChannelManager& GetChannelManager() { return channel_manager_; }
+    ProtocolParser* GetProtocolParser() { return protocol_parser_.get(); }
 
-    /**
-     * @brief 获取协议解析器
-     */
-    ProtocolParser* GetProtocolParser() {
-        return protocol_parser_.get();
-    }
-
-    /**
-     * @brief 设置协议类型
-     */
     void SetProtocolType(ProtocolType type) {
-        if (type == current_protocol_type_) {
-            return;
-        }
-
+        if (type == current_protocol_type_) return;
         current_protocol_type_ = type;
 
         switch (type) {
             case ProtocolType::FIREWATER:
                 protocol_parser_ = std::make_unique<FireWaterParser>();
                 break;
-
             case ProtocolType::JUSTFLOAT:
                 protocol_parser_ = std::make_unique<JustFloatParser>();
                 break;
-
             case ProtocolType::RAWDATA:
                 protocol_parser_ = std::make_unique<RawDataParser>();
                 break;
-
             case ProtocolType::CUSTOM:
                 protocol_parser_ = std::make_unique<CustomParser>();
                 break;
         }
     }
 
-    /**
-     * @brief 处理接收到的数据
-     * @param data 数据缓冲区
-     * @param length 数据长度
-     */
     void ProcessReceivedData(const unsigned char* data, size_t length) {
-        if (!protocol_parser_) {
-            return;
-        }
+        if (!protocol_parser_) return;
 
-        // 解析数据
         ParseResult result = protocol_parser_->Parse(data, length);
-
         if (result.success && !result.values.empty()) {
-            // 将数据推送到通道管理器
             channel_manager_.PushMultiChannelData(result.values.data(), result.values.size());
         }
     }
 
 private:
     /**
-     * @brief 渲染工作区（拖拽目标）
+     * @brief 渲染左侧工具栏（极简图标）
      */
-    void RenderWorkspace() {
-        ImGui::SetNextWindowSize(ImVec2(800, 600), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowPos(ImVec2(270, 50), ImGuiCond_FirstUseEver);
-
-        if (ImGui::Begin("工作区", nullptr, ImGuiWindowFlags_NoCollapse)) {
-            // 拖拽目标区域
-            ImVec2 workspace_size = ImGui::GetContentRegionAvail();
-            ImGui::InvisibleButton("workspace_area", workspace_size);
-
-            if (ImGui::BeginDragDropTarget()) {
-                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("WIDGET_TYPE")) {
-                    WidgetType type = *static_cast<const WidgetType*>(payload->Data);
-
-                    // 在鼠标位置创建组件
-                    Widget* new_widget = workspace_manager_.CreateWidget(type);
-                    if (new_widget) {
-                        ImVec2 mouse_pos = ImGui::GetMousePos();
-                        ImVec2 window_pos = ImGui::GetWindowPos();
-                        new_widget->SetPosition(mouse_pos.x - window_pos.x, mouse_pos.y - window_pos.y);
-                    }
-                }
-                ImGui::EndDragDropTarget();
-            }
-
-            // 显示提示信息
-            if (workspace_manager_.GetWidgetCount() == 0) {
-                ImVec2 text_size = ImGui::CalcTextSize("拖拽组件到此处创建可视化");
-                ImGui::SetCursorPos(ImVec2(
-                    (workspace_size.x - text_size.x) * 0.5f,
-                    (workspace_size.y - text_size.y) * 0.5f
-                ));
-                ImGui::TextDisabled("拖拽组件到此处创建可视化");
-            }
-        }
-        ImGui::End();
-
-        // 渲染所有组件
-        workspace_manager_.RenderAll(channel_manager_);
+    void RenderToolbar() {
+        // 暂时只显示一个标识
+        ImGui::SetCursorPosY(10);
+        ImGui::TextColored(ImVec4(0.26f, 0.59f, 0.98f, 1.0f), "V");
     }
 
     /**
-     * @brief 渲染通道配置窗口
+     * @brief 渲染中间波形显示区
      */
-    void RenderChannelConfig() {
-        ImGui::SetNextWindowSize(ImVec2(400, 500), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowPos(ImVec2(1080, 50), ImGuiCond_FirstUseEver);
+    void RenderWaveform() {
+        ImVec2 plot_size = ImGui::GetContentRegionAvail();
 
-        if (ImGui::Begin("通道配置", &show_channel_config_)) {
-            ImGui::Text("16通道配置");
-            ImGui::Separator();
+        if (ImPlot::BeginPlot("##MainPlot", plot_size, ImPlotFlags_NoTitle)) {
+            ImPlot::SetupAxes("时间 (s)", "数值", ImPlotAxisFlags_None, ImPlotAxisFlags_None);
+            ImPlot::SetupAxisLimits(ImAxis_X1, 0, 10, ImGuiCond_Always);
 
+            if (auto_scale_y_) {
+                ImPlot::SetupAxisLimits(ImAxis_Y1, -5, 5, ImGuiCond_Once);
+            }
+
+            // 绘制所有启用的通道
             for (size_t i = 0; i < DataChannelManager::MAX_CHANNELS; i++) {
-                ImGui::PushID(static_cast<int>(i));
+                if (!channel_manager_.IsChannelEnabled(i)) continue;
 
                 ChannelConfig config = channel_manager_.GetChannelConfig(i);
-                ChannelStats stats = channel_manager_.GetChannelStats(i);
+                std::vector<double> timestamps;
+                std::vector<float> y_values_float;
+                size_t point_count = channel_manager_.GetChannelData(i, timestamps, y_values_float, 2000);
 
-                // 启用/禁用复选框
-                bool enabled = config.enabled;
-                if (ImGui::Checkbox("##enabled", &enabled)) {
-                    channel_manager_.SetChannelEnabled(i, enabled);
+                if (point_count > 0) {
+                    std::vector<double> y_values(y_values_float.begin(), y_values_float.end());
+                    ImVec4 color(config.color[0], config.color[1], config.color[2], config.color[3]);
+                    ImPlot::SetNextLineStyle(color, 2.0f); // 线条稍粗
+                    ImPlot::PlotLine(config.name.c_str(), timestamps.data(), y_values.data(),
+                                    static_cast<int>(point_count));
                 }
-
-                ImGui::SameLine();
-
-                // 通道名称
-                char name_buffer[64];
-                strncpy(name_buffer, config.name.c_str(), sizeof(name_buffer) - 1);
-                name_buffer[sizeof(name_buffer) - 1] = '\0';
-
-                ImGui::SetNextItemWidth(150);
-                if (ImGui::InputText("##name", name_buffer, sizeof(name_buffer))) {
-                    config.name = name_buffer;
-                    channel_manager_.SetChannelConfig(i, config);
-                }
-
-                ImGui::SameLine();
-
-                // 颜色选择
-                if (ImGui::ColorEdit4("##color", config.color,
-                    ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel)) {
-                    channel_manager_.SetChannelConfig(i, config);
-                }
-
-                ImGui::SameLine();
-
-                // 当前值
-                ImGui::Text("%.3f", stats.last_value);
-
-                ImGui::PopID();
             }
+
+            ImPlot::EndPlot();
         }
-        ImGui::End();
     }
 
     /**
-     * @brief 渲染协议配置窗口
+     * @brief 渲染右侧通道列表（紧凑）
      */
-    void RenderProtocolConfig() {
-        ImGui::SetNextWindowSize(ImVec2(300, 200), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowPos(ImVec2(270, 660), ImGuiCond_FirstUseEver);
+    void RenderChannelList() {
+        ImGui::TextColored(ImVec4(0.26f, 0.59f, 0.98f, 1.0f), "数据");
+        ImGui::Separator();
 
-        if (ImGui::Begin("协议配置", &show_protocol_config_)) {
-            ImGui::Text("选择协议类型");
-            ImGui::Separator();
+        // 表头
+        ImGui::Columns(3, "channelcols", false);
+        ImGui::SetColumnWidth(0, 30);
+        ImGui::SetColumnWidth(1, 50);
+        ImGui::SetColumnWidth(2, 120);
 
-            const char* protocol_names[] = {"FireWater", "JustFloat", "RawData", "Custom"};
-            int current_protocol = static_cast<int>(current_protocol_type_);
+        ImGui::Text(""); ImGui::NextColumn();
+        ImGui::Text("通道"); ImGui::NextColumn();
+        ImGui::Text("数值"); ImGui::NextColumn();
+        ImGui::Separator();
 
-            if (ImGui::Combo("协议", &current_protocol, protocol_names, IM_ARRAYSIZE(protocol_names))) {
-                SetProtocolType(static_cast<ProtocolType>(current_protocol));
+        // 通道列表
+        for (size_t i = 0; i < DataChannelManager::MAX_CHANNELS; i++) {
+            ImGui::PushID(static_cast<int>(i));
+
+            ChannelConfig config = channel_manager_.GetChannelConfig(i);
+            ChannelStats stats = channel_manager_.GetChannelStats(i);
+
+            // 复选框
+            bool enabled = config.enabled;
+            if (ImGui::Checkbox("##en", &enabled)) {
+                channel_manager_.SetChannelEnabled(i, enabled);
             }
+            ImGui::NextColumn();
 
-            ImGui::Separator();
-            ImGui::Text("协议信息：");
-            if (protocol_parser_) {
-                ImGui::Text("名称: %s", protocol_parser_->GetName().c_str());
-                ImGui::Text("通道数: %zu", protocol_parser_->GetExpectedChannelCount());
-            }
+            // 通道名（带颜色指示器）
+            ImGui::ColorButton("##colorind", ImVec4(config.color[0], config.color[1],
+                                                     config.color[2], config.color[3]),
+                              ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoPicker,
+                              ImVec2(10, 10));
+            ImGui::SameLine();
+            ImGui::Text("I%zu", i);
+            ImGui::NextColumn();
+
+            // 当前值（带颜色高亮）
+            ImVec4 value_color = enabled ? ImVec4(1, 1, 1, 1) : ImVec4(0.5f, 0.5f, 0.5f, 1);
+            ImGui::TextColored(value_color, "%.3f", stats.last_value);
+            ImGui::NextColumn();
+
+            ImGui::PopID();
         }
-        ImGui::End();
+
+        ImGui::Columns(1);
     }
 
     /**
-     * @brief 渲染组件配置窗口
+     * @brief 渲染底部状态栏（紧凑参数）
      */
-    void RenderWidgetConfigs() {
-        if (workspace_manager_.GetWidgetCount() == 0) {
-            return;
-        }
+    void RenderStatusBar() {
+        // 协议选择
+        const char* protocols[] = {"FireWater", "JustFloat", "RawData", "Custom"};
+        int current = static_cast<int>(current_protocol_type_);
 
-        ImGui::SetNextWindowSize(ImVec2(300, 400), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowPos(ImVec2(580, 660), ImGuiCond_FirstUseEver);
+        ImGui::Text("Δt:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(60);
+        ImGui::InputInt("##dt", &sample_interval_ms_, 0, 0, ImGuiInputTextFlags_ReadOnly);
 
-        if (ImGui::Begin("组件配置")) {
-            workspace_manager_.RenderAllConfigs();
+        ImGui::SameLine();
+        ImGui::Text("ms   缓冲区上限:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(80);
+        int buffer_limit = 50000;
+        ImGui::InputInt("##buffer", &buffer_limit, 0, 0, ImGuiInputTextFlags_ReadOnly);
+
+        ImGui::SameLine();
+        ImGui::Text("/ch   Auto点数对齐:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(80);
+        int auto_align = 101;
+        ImGui::InputInt("##align", &auto_align, 0, 0, ImGuiInputTextFlags_ReadOnly);
+
+        ImGui::SameLine();
+        ImGui::Dummy(ImVec2(20, 0));
+        ImGui::SameLine();
+
+        ImGui::SetNextItemWidth(100);
+        if (ImGui::Combo("##protocol", &current, protocols, IM_ARRAYSIZE(protocols))) {
+            SetProtocolType(static_cast<ProtocolType>(current));
         }
-        ImGui::End();
     }
 
-    ComponentLibrary component_library_;            // 组件库
-    WorkspaceManager workspace_manager_;            // 工作区管理器
-    DataChannelManager channel_manager_;            // 数据通道管理器
-    std::unique_ptr<ProtocolParser> protocol_parser_;  // 协议解析器
-    ProtocolType current_protocol_type_;            // 当前协议类型
+    DataChannelManager channel_manager_;
+    std::unique_ptr<ProtocolParser> protocol_parser_;
+    ProtocolType current_protocol_type_;
 
-    // UI显示控制
-    bool show_component_library_;
-    bool show_channel_config_;
-    bool show_protocol_config_;
+    bool auto_scale_y_;
+    int sample_interval_ms_ = 1;
 };
 
 #endif // VISUALIZATION_UI_H

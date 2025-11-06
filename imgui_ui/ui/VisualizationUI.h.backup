@@ -1,0 +1,268 @@
+/**
+ * @file VisualizationUI.h
+ * @brief 可视化UI管理器 - 整合所有可视化功能
+ * @author AI Assistant
+ * @date 2025
+ *
+ * 功能：
+ * - 整合组件库和工作区
+ * - 实现拖拽创建组件
+ * - 管理协议选择和通道配置
+ * - 提供统一的UI入口
+ */
+
+#ifndef VISUALIZATION_UI_H
+#define VISUALIZATION_UI_H
+
+#include "ComponentLibrary.h"
+#include "WorkspaceManager.h"
+#include "../core/DataChannelManager.h"
+#include "../protocols/ProtocolParser.h"
+#include "../protocols/FireWaterParser.h"
+#include "../protocols/JustFloatParser.h"
+#include "../protocols/RawDataParser.h"
+#include "../protocols/CustomParser.h"
+#include <memory>
+
+/**
+ * @brief 可视化UI管理器
+ */
+class VisualizationUI {
+public:
+    VisualizationUI()
+        : current_protocol_type_(ProtocolType::FIREWATER)
+    {
+        // 初始化默认协议解析器
+        protocol_parser_ = std::make_unique<FireWaterParser>();
+    }
+
+    /**
+     * @brief 渲染所有UI（VOFA+风格集成布局）
+     */
+    void Render() {
+        // 全屏主窗口
+        ImVec2 viewport_size = ImGui::GetMainViewport()->Size;
+        ImGui::SetNextWindowPos(ImVec2(0, 0));
+        ImGui::SetNextWindowSize(viewport_size);
+
+        ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
+                                        ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                                        ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+
+        if (ImGui::Begin("可视化主窗口", nullptr, window_flags)) {
+            // 左右分栏布局
+            ImVec2 content_size = ImGui::GetContentRegionAvail();
+
+            // 左侧：波形显示区（70%宽度）
+            ImGui::BeginChild("波形显示区", ImVec2(content_size.x * 0.7f, content_size.y), true);
+            RenderMainWaveform();
+            ImGui::EndChild();
+
+            ImGui::SameLine();
+
+            // 右侧：控制面板（30%宽度）
+            ImGui::BeginChild("控制面板", ImVec2(content_size.x * 0.3f, content_size.y), true);
+            RenderControlPanel();
+            ImGui::EndChild();
+        }
+        ImGui::End();
+    }
+
+    /**
+     * @brief 获取数据通道管理器
+     */
+    DataChannelManager& GetChannelManager() {
+        return channel_manager_;
+    }
+
+    /**
+     * @brief 获取协议解析器
+     */
+    ProtocolParser* GetProtocolParser() {
+        return protocol_parser_.get();
+    }
+
+    /**
+     * @brief 设置协议类型
+     */
+    void SetProtocolType(ProtocolType type) {
+        if (type == current_protocol_type_) {
+            return;
+        }
+
+        current_protocol_type_ = type;
+
+        switch (type) {
+            case ProtocolType::FIREWATER:
+                protocol_parser_ = std::make_unique<FireWaterParser>();
+                break;
+
+            case ProtocolType::JUSTFLOAT:
+                protocol_parser_ = std::make_unique<JustFloatParser>();
+                break;
+
+            case ProtocolType::RAWDATA:
+                protocol_parser_ = std::make_unique<RawDataParser>();
+                break;
+
+            case ProtocolType::CUSTOM:
+                protocol_parser_ = std::make_unique<CustomParser>();
+                break;
+        }
+    }
+
+    /**
+     * @brief 处理接收到的数据
+     * @param data 数据缓冲区
+     * @param length 数据长度
+     */
+    void ProcessReceivedData(const unsigned char* data, size_t length) {
+        if (!protocol_parser_) {
+            return;
+        }
+
+        // 解析数据
+        ParseResult result = protocol_parser_->Parse(data, length);
+
+        if (result.success && !result.values.empty()) {
+            // 将数据推送到通道管理器
+            channel_manager_.PushMultiChannelData(result.values.data(), result.values.size());
+        }
+    }
+
+private:
+    /**
+     * @brief 渲染主波形图（集成式）
+     */
+    void RenderMainWaveform() {
+        ImGui::Text("实时波形");
+        ImGui::Separator();
+
+        // 使用ImPlot绘制多通道波形
+        if (ImPlot::BeginPlot("##MainWaveform", ImVec2(-1, -1))) {
+            ImPlot::SetupAxes("时间 (s)", "数值");
+            ImPlot::SetupAxisLimits(ImAxis_X1, 0, 10, ImGuiCond_Always);
+            ImPlot::SetupAxisLimits(ImAxis_Y1, -5, 5, ImGuiCond_Once);
+
+            // 绘制所有启用的通道
+            for (size_t i = 0; i < DataChannelManager::MAX_CHANNELS; i++) {
+                if (!channel_manager_.IsChannelEnabled(i)) {
+                    continue;
+                }
+
+                ChannelConfig config = channel_manager_.GetChannelConfig(i);
+                std::vector<double> timestamps;
+                std::vector<float> y_values_float;
+                size_t point_count = channel_manager_.GetChannelData(i, timestamps, y_values_float, 2000);
+
+                if (point_count > 0) {
+                    // 转换为double（ImPlot要求）
+                    std::vector<double> y_values(y_values_float.begin(), y_values_float.end());
+
+                    ImVec4 color(config.color[0], config.color[1], config.color[2], config.color[3]);
+                    ImPlot::SetNextLineStyle(color);
+                    ImPlot::PlotLine(config.name.c_str(), timestamps.data(), y_values.data(),
+                                    static_cast<int>(point_count));
+                }
+            }
+
+            ImPlot::EndPlot();
+        }
+    }
+
+    /**
+     * @brief 渲染控制面板（集成式，使用折叠面板）
+     */
+    void RenderControlPanel() {
+        ImGui::TextColored(ImVec4(0.26f, 0.59f, 0.98f, 1.0f), "控制面板");
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // 1. 协议选择（紧凑）
+        if (ImGui::CollapsingHeader("协议设置", ImGuiTreeNodeFlags_DefaultOpen)) {
+            const char* protocol_names[] = {"FireWater", "JustFloat", "RawData", "Custom"};
+            int current_protocol = static_cast<int>(current_protocol_type_);
+
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::Combo("##protocol", &current_protocol, protocol_names, IM_ARRAYSIZE(protocol_names))) {
+                SetProtocolType(static_cast<ProtocolType>(current_protocol));
+            }
+
+            if (protocol_parser_) {
+                ImGui::TextDisabled("通道数: %zu", protocol_parser_->GetExpectedChannelCount());
+            }
+            ImGui::Spacing();
+        }
+
+        // 2. 通道配置（可折叠）
+        if (ImGui::CollapsingHeader("通道配置", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::BeginChild("通道列表", ImVec2(0, 300), true);
+
+            for (size_t i = 0; i < DataChannelManager::MAX_CHANNELS; i++) {
+                ImGui::PushID(static_cast<int>(i));
+
+                ChannelConfig config = channel_manager_.GetChannelConfig(i);
+                ChannelStats stats = channel_manager_.GetChannelStats(i);
+
+                // 启用复选框
+                bool enabled = config.enabled;
+                if (ImGui::Checkbox("##enabled", &enabled)) {
+                    channel_manager_.SetChannelEnabled(i, enabled);
+                }
+
+                ImGui::SameLine();
+
+                // 通道名称
+                char name_buffer[32];
+                snprintf(name_buffer, sizeof(name_buffer), "CH%zu", i);
+
+                ImGui::SetNextItemWidth(50);
+                ImGui::TextUnformatted(name_buffer);
+
+                ImGui::SameLine();
+
+                // 颜色指示器
+                ImGui::ColorEdit4("##color", config.color,
+                                 ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel |
+                                 ImGuiColorEditFlags_NoPicker);
+
+                ImGui::SameLine();
+
+                // 当前值
+                ImGui::Text("%.2f", stats.last_value);
+
+                ImGui::PopID();
+            }
+
+            ImGui::EndChild();
+            ImGui::Spacing();
+        }
+
+        // 3. 统计信息（可折叠）
+        if (ImGui::CollapsingHeader("统计信息")) {
+            for (size_t i = 0; i < DataChannelManager::MAX_CHANNELS; i++) {
+                if (!channel_manager_.IsChannelEnabled(i)) {
+                    continue;
+                }
+
+                ChannelConfig config = channel_manager_.GetChannelConfig(i);
+                ChannelStats stats = channel_manager_.GetChannelStats(i);
+
+                ImGui::Text("%s:", config.name.c_str());
+                ImGui::Indent();
+                ImGui::Text("最小: %.2f", stats.min_value);
+                ImGui::Text("最大: %.2f", stats.max_value);
+                ImGui::Text("平均: %.2f", stats.avg_value);
+                ImGui::Text("采样: %zu", stats.sample_count);
+                ImGui::Unindent();
+                ImGui::Spacing();
+            }
+        }
+    }
+
+    DataChannelManager channel_manager_;            // 数据通道管理器
+    std::unique_ptr<ProtocolParser> protocol_parser_;  // 协议解析器
+    ProtocolType current_protocol_type_;            // 当前协议类型
+};
+
+#endif // VISUALIZATION_UI_H

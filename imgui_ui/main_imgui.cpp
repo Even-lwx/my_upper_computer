@@ -469,8 +469,13 @@ void RenderSendPanel(AppState& state) {
     ImGui::Text("已发送: %d 字节", state.bytes_sent);
 }
 
-// 主函数
+// 主函数（Windows GUI应用入口）
+#ifdef _WIN32
+int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+    (void)hInstance; (void)hPrevInstance; (void)lpCmdLine; (void)nCmdShow;
+#else
 int main(int, char**) {
+#endif
     // 初始化GLFW
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
@@ -505,19 +510,25 @@ int main(int, char**) {
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
-    // 加载中文字体（解决乱码问题）
-    io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\msyh.ttc", 20.0f, NULL, io.Fonts->GetGlyphRangesChineseFull());
+    // 加载中文字体（优化：仅加载常用简体中文2500字，大幅提升启动速度）
+    io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\msyh.ttc", 20.0f, NULL, io.Fonts->GetGlyphRangesChineseSimplifiedCommon());
 
     // 应用程序状态
     AppState app_state;
 
-    // 初始化串口列表
-    app_state.available_ports = SerialPort_Win::EnumeratePorts();
+    // 延迟串口枚举标志（启动时不枚举，首次渲染时再枚举，加快启动速度）
+    bool ports_enumerated = false;
 
     // 主循环
     while (!glfwWindowShouldClose(window)) {
         // 处理事件
         glfwPollEvents();
+
+        // 延迟串口枚举（仅首次执行）
+        if (!ports_enumerated) {
+            app_state.available_ports = SerialPort_Win::EnumeratePorts();
+            ports_enumerated = true;
+        }
 
         // 定时发送逻辑
         if (app_state.enable_auto_send && app_state.is_connected && app_state.send_buffer[0] != '\0') {
