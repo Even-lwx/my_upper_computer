@@ -251,26 +251,84 @@ void RenderSerialConfigPanel(AppState& state) {
     // 串口选择
     ImGui::Text("串口端口");
 
-    // 创建串口列表的char*数组供ImGui使用
-    std::vector<const char*> port_cstrs;
-    for (const auto& port : state.available_ports) {
-        port_cstrs.push_back(port.c_str());
-    }
-
     ImGui::PushItemWidth(300);
-    if (!state.available_ports.empty()) {
-        ImGui::Combo("##port", &state.selected_port_index, port_cstrs.data(), port_cstrs.size());
+
+    // 显示加载状态或端口选择
+    if (state.ports_enumerating) {
+        // 正在枚举中，显示加载提示
+        ImGui::TextColored(ImVec4(0.3f, 0.8f, 0.3f, 1.0f), "正在扫描串口设备...");
+    } else if (!state.available_ports_info.empty()) {
+        // 枚举完成，显示端口下拉框
+        // 使用Lambda为Combo提供友好名称显示
+        auto getter = [](void* data, int idx, const char** out_text) -> bool {
+            auto& ports_info = *static_cast<std::vector<SerialPortInfo>*>(data);
+            if (idx < 0 || idx >= static_cast<int>(ports_info.size())) return false;
+
+            // 直接使用成员字符串的指针（而非临时对象），避免悬空指针
+            if (!ports_info[idx].friendlyName.empty()) {
+                *out_text = ports_info[idx].friendlyName.c_str();
+            } else {
+                *out_text = ports_info[idx].portName.c_str();
+            }
+            return true;
+        };
+
+        if (ImGui::Combo("##port", &state.selected_port_index, getter,
+                        &state.available_ports_info,
+                        static_cast<int>(state.available_ports_info.size()))) {
+            // 端口选择变更处理（如需要）
+        }
+
+        // 添加tooltip显示完整设备信息
+        if (ImGui::IsItemHovered() && state.selected_port_index >= 0 &&
+            state.selected_port_index < static_cast<int>(state.available_ports_info.size())) {
+            const SerialPortInfo& info = state.available_ports_info[state.selected_port_index];
+            ImGui::BeginTooltip();
+            ImGui::TextColored(ImVec4(0.26f, 0.59f, 0.98f, 1.0f), "设备详细信息");
+            ImGui::Separator();
+            ImGui::Text("端口: %s", info.portName.c_str());
+            if (!info.friendlyName.empty()) {
+                ImGui::Text("友好名称: %s", info.friendlyName.c_str());
+            }
+            if (!info.description.empty()) {
+                ImGui::Text("描述: %s", info.description.c_str());
+            }
+            if (!info.manufacturer.empty()) {
+                ImGui::Text("制造商: %s", info.manufacturer.c_str());
+            }
+            if (!info.hardwareId.empty()) {
+                ImGui::Text("硬件ID: %s", info.hardwareId.c_str());
+            }
+            ImGui::EndTooltip();
+        }
     } else {
+        // 没有找到任何端口
         ImGui::Text("未找到串口");
     }
+
     ImGui::PopItemWidth();
 
-    if (ImGui::Button("刷新端口", ImVec2(300, 40))) {
-        // 刷新串口列表
-        state.available_ports = SerialPort_Win::EnumeratePorts();
-        if (state.selected_port_index >= (int)state.available_ports.size()) {
-            state.selected_port_index = 0;
+    // 异步刷新按钮
+    bool can_refresh = !state.ports_enumerating && !state.is_connected;
+    if (!can_refresh) {
+        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
+    }
+
+    if (ImGui::Button(state.ports_enumerating ? "扫描中..." : "刷新端口", ImVec2(300, 40))) {
+        if (!state.ports_enumerating && !state.is_connected) {
+            // 启动异步枚举
+            state.port_enum_future = SerialPort_Win::EnumeratePortsAsync();
+            state.ports_enumerating = true;
         }
+    }
+
+    if (!can_refresh) {
+        ImGui::PopStyleVar();
+    }
+
+    if (state.is_connected) {
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.8f, 0.6f, 0.3f, 1.0f), "(断开后可刷新)");
     }
 
     ImGui::Separator();
@@ -653,18 +711,28 @@ int main(int, char**) {
         app_state.thread_pool = std::make_unique<ThreadPool>(app_state.thread_config.num_worker_threads);
     }
 
-    // 延迟串口枚举标志（启动时不枚举，首次渲染时再枚举，加快启动速度）
-    bool ports_enumerated = false;
+    // 启动异步串口枚举（不阻塞UI）
+    app_state.port_enum_future = SerialPort_Win::EnumeratePortsAsync();
+    app_state.ports_enumerating = true;
 
     // 主循环
     while (!glfwWindowShouldClose(window)) {
         // 处理事件
         glfwPollEvents();
 
-        // 延迟串口枚举（仅首次执行）
-        if (!ports_enumerated) {
-            app_state.available_ports = SerialPort_Win::EnumeratePorts();
-            ports_enumerated = true;
+        // 检查异步串口枚举是否完成
+        if (app_state.ports_enumerating) {
+            if (app_state.port_enum_future.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
+                app_state.available_ports_info = app_state.port_enum_future.get();
+                app_state.ports_enumerating = false;
+                app_state.ports_enumerated = true;
+
+                // 向后兼容：同时更新available_ports
+                app_state.available_ports.clear();
+                for (const auto& info : app_state.available_ports_info) {
+                    app_state.available_ports.push_back(info.portName);
+                }
+            }
         }
 
         // 定时发送逻辑

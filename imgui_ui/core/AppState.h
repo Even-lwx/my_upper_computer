@@ -14,6 +14,7 @@
 #include <memory>
 #include <queue>
 #include <chrono>
+#include <future>
 #include <imgui.h>
 #include "ThreadPool.h"
 #include "../ui/VisualizationUI.h"
@@ -34,7 +35,11 @@ struct AppState {
     ImVec4 clear_color = ImVec4(0.10f, 0.12f, 0.15f, 1.00f);  // 背景色
 
     // 串口配置
-    std::vector<std::string> available_ports;  // 可用串口列表
+    std::vector<std::string> available_ports;  // 可用串口列表（向后兼容）
+    std::vector<SerialPortInfo> available_ports_info;  // 串口详细信息列表
+    std::future<std::vector<SerialPortInfo>> port_enum_future;  // 异步枚举任务
+    bool ports_enumerating = false;  // 是否正在枚举
+    bool ports_enumerated = false;   // 是否已完成枚举
     int selected_port_index = 0;
     int selected_baudrate_index = 7;  // 默认115200
     int selected_databits_index = 3;  // 默认8位

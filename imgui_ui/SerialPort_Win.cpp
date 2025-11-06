@@ -4,6 +4,32 @@
 #include <regstr.h>
 #include <cstring>
 #include <chrono>
+#include <algorithm>
+#include <initguid.h>
+
+// 链接SetupAPI库
+#pragma comment(lib, "setupapi.lib")
+
+// 定义串口设备类GUID
+DEFINE_GUID(GUID_DEVCLASS_PORTS, 0x4D36E978, 0xE325, 0x11CE, 0xBF, 0xC1, 0x08, 0x00, 0x2B, 0xE1, 0x03, 0x18);
+
+/**
+ * @brief 将Windows宽字符串转换为UTF-8字符串
+ * @param wstr 宽字符串指针
+ * @return UTF-8编码的字符串
+ */
+static std::string WideToUtf8(const wchar_t* wstr) {
+    if (!wstr || wstr[0] == L'\0') return "";
+
+    // 计算所需缓冲区大小
+    int size = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, NULL, 0, NULL, NULL);
+    if (size <= 0) return "";
+
+    // 转换为UTF-8
+    std::string result(size - 1, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, wstr, -1, &result[0], size, NULL, NULL);
+    return result;
+}
 
 SerialPort_Win::SerialPort_Win()
     : hComm_(INVALID_HANDLE_VALUE)
@@ -18,29 +44,124 @@ SerialPort_Win::~SerialPort_Win() {
 }
 
 std::vector<std::string> SerialPort_Win::EnumeratePorts() {
+    // 使用详细枚举，但只返回端口名称（向后兼容）
+    auto detailed = EnumeratePortsDetailed();
     std::vector<std::string> ports;
-    for (int i = 1; i <= 256; i++) {
-        std::string portName = "\\\\.\\COM" + std::to_string(i);
-        HANDLE hPort = CreateFileA(
-            portName.c_str(),
-            GENERIC_READ | GENERIC_WRITE,
-            0,
-            NULL,
-            OPEN_EXISTING,
-            0,
-            NULL
-        );
-        if (hPort != INVALID_HANDLE_VALUE) {
-            ports.push_back("COM" + std::to_string(i));
-            CloseHandle(hPort);
-        }
+    for (const auto& info : detailed) {
+        ports.push_back(info.portName);
     }
+
+    // 如果没找到任何端口，返回默认列表
     if (ports.empty()) {
         for (int i = 1; i <= 10; i++) {
             ports.push_back("COM" + std::to_string(i));
         }
     }
+
     return ports;
+}
+
+/**
+ * @brief 使用SetupAPI枚举串口设备（详细版）
+ */
+std::vector<SerialPortInfo> SerialPort_Win::EnumeratePortsDetailed() {
+    std::vector<SerialPortInfo> ports;
+
+    // 获取所有Ports设备类的设备信息集
+    HDEVINFO hDevInfo = SetupDiGetClassDevsW(
+        &GUID_DEVCLASS_PORTS,  // Ports设备类
+        NULL,
+        NULL,
+        DIGCF_PRESENT          // 仅获取当前存在的设备
+    );
+
+    if (hDevInfo == INVALID_HANDLE_VALUE) {
+        return ports;
+    }
+
+    SP_DEVINFO_DATA devInfoData;
+    devInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
+
+    // 枚举设备信息集中的每个设备
+    for (DWORD i = 0; SetupDiEnumDeviceInfo(hDevInfo, i, &devInfoData); i++) {
+        SerialPortInfo portInfo;
+        wchar_t buffer[256] = {0};
+        DWORD dataType = 0;
+        DWORD bufferSize = 0;
+
+        // 获取友好名称（包含COM端口号）
+        if (SetupDiGetDeviceRegistryPropertyW(
+                hDevInfo, &devInfoData, SPDRP_FRIENDLYNAME,
+                &dataType, (PBYTE)buffer, sizeof(buffer), &bufferSize)) {
+            portInfo.friendlyName = WideToUtf8(buffer);
+
+            // 从友好名称提取COM端口号
+            // 示例："USB Serial Port (COM3)" -> "COM3"
+            const wchar_t* start = wcsstr(buffer, L"(COM");
+            if (start) {
+                start++; // 跳过 '('
+                const wchar_t* end = wcschr(start, L')');
+                if (end && (end - start) < 20) {
+                    portInfo.portName = WideToUtf8(std::wstring(start, end - start).c_str());
+                }
+            }
+        }
+
+        // 跳过非COM设备
+        if (portInfo.portName.empty() || portInfo.portName.find("COM") != 0) {
+            continue;
+        }
+
+        // 获取设备描述
+        memset(buffer, 0, sizeof(buffer));
+        if (SetupDiGetDeviceRegistryPropertyW(
+                hDevInfo, &devInfoData, SPDRP_DEVICEDESC,
+                &dataType, (PBYTE)buffer, sizeof(buffer), &bufferSize)) {
+            portInfo.description = WideToUtf8(buffer);
+        }
+
+        // 获取制造商
+        memset(buffer, 0, sizeof(buffer));
+        if (SetupDiGetDeviceRegistryPropertyW(
+                hDevInfo, &devInfoData, SPDRP_MFG,
+                &dataType, (PBYTE)buffer, sizeof(buffer), &bufferSize)) {
+            portInfo.manufacturer = WideToUtf8(buffer);
+        }
+
+        // 获取硬件ID
+        memset(buffer, 0, sizeof(buffer));
+        if (SetupDiGetDeviceRegistryPropertyW(
+                hDevInfo, &devInfoData, SPDRP_HARDWAREID,
+                &dataType, (PBYTE)buffer, sizeof(buffer), &bufferSize)) {
+            portInfo.hardwareId = WideToUtf8(buffer);
+        }
+
+        ports.push_back(portInfo);
+    }
+
+    // 清理资源
+    SetupDiDestroyDeviceInfoList(hDevInfo);
+
+    // 按端口号排序（COM3 < COM10）
+    std::sort(ports.begin(), ports.end(),
+        [](const SerialPortInfo& a, const SerialPortInfo& b) {
+            // 提取数字部分："COM3" -> 3
+            int numA = atoi(a.portName.c_str() + 3);
+            int numB = atoi(b.portName.c_str() + 3);
+            return numA < numB;
+        }
+    );
+
+    return ports;
+}
+
+/**
+ * @brief 异步枚举串口设备
+ */
+std::future<std::vector<SerialPortInfo>> SerialPort_Win::EnumeratePortsAsync() {
+    return std::async(std::launch::async, []() {
+        return EnumeratePortsDetailed();
+    });
 }
 
 bool SerialPort_Win::Open(const SerialConfig& config) {

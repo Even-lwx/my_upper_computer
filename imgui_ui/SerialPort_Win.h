@@ -16,6 +16,7 @@
 #include <thread>
 #include <mutex>
 #include <atomic>
+#include <future>
 #include <windows.h>
 
 /**
@@ -30,6 +31,28 @@ struct SerialConfig {
 };
 
 /**
+ * @brief 串口设备详细信息
+ */
+struct SerialPortInfo {
+    std::string portName;        // 端口名称 "COM3"
+    std::string friendlyName;    // 友好名称 "USB Serial Port (COM3)"
+    std::string description;     // 设备描述 "CH340 USB-SERIAL CHIP"
+    std::string manufacturer;    // 制造商 "wch.cn"
+    std::string hardwareId;      // 硬件ID "USB\VID_1A86&PID_7523"
+
+    /**
+     * @brief 获取显示名称（优先使用友好名称）
+     * @return 用于UI显示的名称
+     */
+    std::string GetDisplayName() const {
+        if (!friendlyName.empty()) {
+            return friendlyName;
+        }
+        return portName;
+    }
+};
+
+/**
  * @brief Windows串口管理器
  */
 class SerialPort_Win {
@@ -38,10 +61,22 @@ public:
     ~SerialPort_Win();
 
     /**
-     * @brief 枚举所有可用串口
+     * @brief 枚举所有可用串口（简单版，向后兼容）
      * @return 串口名称列表
      */
     static std::vector<std::string> EnumeratePorts();
+
+    /**
+     * @brief 枚举所有可用串口（详细版，包含设备信息）
+     * @return 串口详细信息列表
+     */
+    static std::vector<SerialPortInfo> EnumeratePortsDetailed();
+
+    /**
+     * @brief 异步枚举所有可用串口
+     * @return future对象，可异步获取串口详细信息列表
+     */
+    static std::future<std::vector<SerialPortInfo>> EnumeratePortsAsync();
 
     /**
      * @brief 打开串口
