@@ -53,6 +53,7 @@ struct AppState {
 
     // 数据显示
     char receive_buffer[65536] = "";
+    size_t receive_buffer_pos = 0;  // 新增：跟踪缓冲区当前位置，避免strlen
     char send_buffer[1024] = "";
     bool hex_display = false;
     bool hex_send = false;
@@ -263,16 +264,14 @@ void RenderSerialConfigPanel(AppState& state) {
                     // 初始化定时发送计时器
                     state.last_send_time = std::chrono::steady_clock::now();
 
-                    // 设置接收回调
+                    // 设置接收回调（优化：缩小锁粒度，将耗时操作移到锁外）
                     state.serial_port.SetReceiveCallback([&state](const unsigned char* data, int length) {
-                        std::lock_guard<std::mutex> lock(state.receive_mutex);
-
-                        // 传递原始数据给可视化系统（在转换前）
+                        // 先进行不需要锁的操作：传递原始数据给可视化系统
                         if (state.show_visualization) {
                             state.visualization_ui.ProcessReceivedData(data, length);
                         }
 
-                        // 转换数据
+                        // 格式转换（在锁外进行）
                         std::string dataStr;
                         if (state.hex_display) {
                             dataStr = DataConverter::BytesToHexString(data, length, true);
@@ -280,23 +279,37 @@ void RenderSerialConfigPanel(AppState& state) {
                             dataStr = DataConverter::BytesToAsciiString(data, length, true);
                         }
 
-                        // 追加到接收缓冲区
-                        size_t current_len = strlen(state.receive_buffer);
-                        size_t available_space = sizeof(state.receive_buffer) - current_len - 1;
-
-                        if (dataStr.length() < available_space) {
-                            strcat(state.receive_buffer, dataStr.c_str());
-                            strcat(state.receive_buffer, "\n");
+                        // 准备日志数据（在锁外进行）
+                        bool should_log = false;
+                        std::string log_filename_copy;
+                        if (state.enable_logging && !state.log_filename.empty()) {
+                            should_log = true;
+                            log_filename_copy = state.log_filename;
                         }
 
-                        state.bytes_received += length;
-                        state.scroll_to_bottom = true;
+                        // 缩小锁范围：只在必要时持有锁
+                        {
+                            std::lock_guard<std::mutex> lock(state.receive_mutex);
 
-                        // 写入日志文件
-                        if (state.enable_logging && !state.log_filename.empty()) {
-                            std::ofstream logFile(state.log_filename, std::ios::app);
+                            // 追加到接收缓冲区
+                            size_t available_space = sizeof(state.receive_buffer) - state.receive_buffer_pos - 1;
+                            size_t data_len = dataStr.length();
+
+                            if (data_len + 1 < available_space) {
+                                memcpy(state.receive_buffer + state.receive_buffer_pos, dataStr.c_str(), data_len);
+                                state.receive_buffer_pos += data_len;
+                                state.receive_buffer[state.receive_buffer_pos++] = '\n';
+                                state.receive_buffer[state.receive_buffer_pos] = '\0';
+                            }
+
+                            state.bytes_received += length;
+                            state.scroll_to_bottom = true;
+                        }  // 锁在此处释放
+
+                        // 文件写入在锁外执行（避免阻塞）
+                        if (should_log) {
+                            std::ofstream logFile(log_filename_copy, std::ios::app);
                             if (logFile.is_open()) {
-                                // 获取当前时间
                                 auto now = std::chrono::system_clock::now();
                                 auto now_c = std::chrono::system_clock::to_time_t(now);
                                 struct tm timeinfo;
@@ -335,6 +348,7 @@ void RenderDataDisplayPanel(AppState& state) {
     ImGui::SameLine();
     if (ImGui::Button("清空")) {
         state.receive_buffer[0] = '\0';
+        state.receive_buffer_pos = 0;  // 同步重置位置指针
         state.bytes_received = 0;
     }
 

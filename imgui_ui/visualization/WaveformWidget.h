@@ -131,7 +131,8 @@ private:
                     channel_index, timestamps, y_values_float, max_points_);
 
                 if (point_count > 0) {
-                    // 转换float到double以匹配ImPlot类型要求
+                    // ImPlot要求X和Y类型一致，必须转换为double
+                    // 注意：这是ImPlot的限制，无法避免此转换
                     std::vector<double> y_values(y_values_float.begin(), y_values_float.end());
 
                     // 设置线条颜色

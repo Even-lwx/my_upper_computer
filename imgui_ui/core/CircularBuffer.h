@@ -181,30 +181,45 @@ public:
     }
 
     /**
-     * @brief 获取时间戳和Y值数组用于ImPlot
+     * @brief 获取时间戳和Y值数组用于ImPlot（优化版：一次完成，避免双重拷贝）
      * @param timestamps 输出时间戳数组
      * @param y_values 输出Y值数组
-     * @param max_points 最大点数
+     * @param max_points 最大点数（0表示全部）
      * @return 实际点数
      */
     size_t GetXYValues(std::vector<double>& timestamps, std::vector<float>& y_values, size_t max_points = 0) const {
-        std::vector<T> data;
-        size_t n = GetContinuousData(data, max_points);
+        if (count_ == 0) {
+            timestamps.clear();
+            y_values.clear();
+            return 0;
+        }
 
-        timestamps.resize(n);
-        y_values.resize(n);
+        // 确定实际要读取的点数
+        size_t num_points = (max_points > 0 && max_points < count_) ? max_points : count_;
 
-        for (size_t i = 0; i < n; i++) {
+        timestamps.resize(num_points);
+        y_values.resize(num_points);
+
+        // 计算起始索引（最老的数据点）
+        size_t oldest_index = (count_ < Capacity) ? 0 : head_;
+
+        // 计算采样步长（如果需要降采样）
+        size_t step = (max_points > 0 && count_ > max_points) ? (count_ / max_points) : 1;
+
+        // 直接从data_数组读取，一次完成
+        for (size_t i = 0; i < num_points; i++) {
+            size_t idx = (oldest_index + i * step) % Capacity;
+
             if constexpr (std::is_same_v<T, DataPoint>) {
-                timestamps[i] = data[i].timestamp;
-                y_values[i] = data[i].value;
+                timestamps[i] = data_[idx].timestamp;
+                y_values[i] = data_[idx].value;
             } else {
                 timestamps[i] = static_cast<double>(i);
-                y_values[i] = static_cast<float>(data[i]);
+                y_values[i] = static_cast<float>(data_[idx]);
             }
         }
 
-        return n;
+        return num_points;
     }
 
     /**
