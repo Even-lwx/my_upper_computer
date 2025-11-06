@@ -5,9 +5,9 @@ project(SerialDebugger_ImGui VERSION 1.0.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 输出目录设置
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+# 输出目录设置（统一输出到项目根目录的Release文件夹）
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/Release)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/Release/lib)
 
 # ========================================
 # 下载ImGui和GLFW (使用FetchContent)
@@ -166,7 +166,7 @@ endif()
 # 编译选项
 # ========================================
 if(MSVC)
-    target_compile_options(${PROJECT_NAME} PRIVATE /W4 /utf-8)
+    target_compile_options(${PROJECT_NAME} PRIVATE /W4 /utf-8 /execution-charset:utf-8)
     target_compile_options(${PROJECT_NAME} PRIVATE $<$<CONFIG:Release>:/O2>)
 else()
     target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra)
