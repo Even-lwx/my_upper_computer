@@ -11,6 +11,8 @@
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
+#include <implot.h>
+#include <implot_internal.h>
 #include <stdio.h>
 #include <GLFW/glfw3.h>
 #include <vector>
@@ -27,6 +29,9 @@
 // 串口和数据转换
 #include "SerialPort_Win.h"
 #include "DataConverter.h"
+
+// 可视化系统
+#include "ui/VisualizationUI.h"
 
 // 应用程序状态
 struct AppState {
@@ -66,6 +71,10 @@ struct AppState {
     bool enable_auto_send = false;
     int auto_send_interval_ms = 1000;  // 默认1秒
     std::chrono::steady_clock::time_point last_send_time;
+
+    // 可视化系统
+    VisualizationUI visualization_ui;
+    bool show_visualization = false;  // 是否显示可视化界面
 };
 
 // GLFW错误回调
@@ -257,6 +266,11 @@ void RenderSerialConfigPanel(AppState& state) {
                     // 设置接收回调
                     state.serial_port.SetReceiveCallback([&state](const unsigned char* data, int length) {
                         std::lock_guard<std::mutex> lock(state.receive_mutex);
+
+                        // 传递原始数据给可视化系统（在转换前）
+                        if (state.show_visualization) {
+                            state.visualization_ui.ProcessReceivedData(data, length);
+                        }
 
                         // 转换数据
                         std::string dataStr;
@@ -465,6 +479,7 @@ int main(int, char**) {
     // 初始化ImGui
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    ImPlot::CreateContext();  // 初始化ImPlot上下文
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // 启用键盘导航
     // io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;      // 停靠功能（需要docking分支）
@@ -540,6 +555,10 @@ int main(int, char**) {
                 }
                 ImGui::EndMenu();
             }
+            if (ImGui::BeginMenu("可视化")) {
+                ImGui::MenuItem("显示可视化界面", NULL, &app_state.show_visualization);
+                ImGui::EndMenu();
+            }
             if (ImGui::BeginMenu("帮助")) {
                 ImGui::MenuItem("显示演示窗口", NULL, &app_state.show_demo_window);
                 ImGui::EndMenu();
@@ -574,6 +593,11 @@ int main(int, char**) {
 
         ImGui::End();
 
+        // 渲染可视化界面
+        if (app_state.show_visualization) {
+            app_state.visualization_ui.Render();
+        }
+
         // ImGui演示窗口（可选，用于学习）
         if (app_state.show_demo_window)
             ImGui::ShowDemoWindow(&app_state.show_demo_window);
@@ -592,6 +616,7 @@ int main(int, char**) {
     }
 
     // 清理
+    ImPlot::DestroyContext();  // 销毁ImPlot上下文
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
