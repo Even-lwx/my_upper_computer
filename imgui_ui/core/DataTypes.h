@@ -88,9 +88,10 @@ inline float BytesToFloat(const unsigned char* data, DataType type) {
  * @brief 协议类型枚举
  */
 enum class ProtocolType {
-    FIREWATER,      // FireWater协议（0xAA + float*N + 0x7F）
+    FIREWATER,      // FireWater协议（float*N + 0x00 0x00 0x80 0x7F）
     JUSTFLOAT,      // JustFloat协议（纯float流）
     RAWDATA,        // RawData协议（原始字节）
+    CSV,            // CSV文本协议（逗号分隔数值）
     CUSTOM          // 自定义协议（可配置）
 };
 
@@ -102,6 +103,7 @@ inline std::string GetProtocolName(ProtocolType type) {
         case ProtocolType::FIREWATER: return "FireWater";
         case ProtocolType::JUSTFLOAT: return "JustFloat";
         case ProtocolType::RAWDATA:   return "RawData";
+        case ProtocolType::CSV:       return "CSV";
         case ProtocolType::CUSTOM:    return "Custom";
         default: return "Unknown";
     }

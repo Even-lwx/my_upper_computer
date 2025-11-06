@@ -20,6 +20,7 @@
 #include "../protocols/JustFloatParser.h"
 #include "../protocols/RawDataParser.h"
 #include "../protocols/CustomParser.h"
+#include "../protocols/CsvParser.h"
 #include <imgui.h>
 #include <implot.h>
 #include <memory>
@@ -86,9 +87,22 @@ public:
             case ProtocolType::RAWDATA:
                 protocol_parser_ = std::make_unique<RawDataParser>();
                 break;
+            case ProtocolType::CSV:
+                protocol_parser_ = std::make_unique<CsvParser>();
+                break;
             case ProtocolType::CUSTOM:
                 protocol_parser_ = std::make_unique<CustomParser>();
                 break;
+        }
+
+        // 同步通道数配置到新协议
+        if (protocol_parser_) {
+            protocol_parser_->SetExpectedChannelCount(channel_count_);
+        }
+
+        // 自动调整启用的通道数量
+        for (size_t i = 0; i < DataChannelManager::MAX_CHANNELS; i++) {
+            channel_manager_.SetChannelEnabled(i, static_cast<int>(i) < channel_count_);
         }
     }
 
@@ -119,7 +133,7 @@ private:
 
         if (ImPlot::BeginPlot("##MainPlot", plot_size, ImPlotFlags_NoTitle)) {
             ImPlot::SetupAxes("时间 (s)", "数值", ImPlotAxisFlags_None, ImPlotAxisFlags_None);
-            ImPlot::SetupAxisLimits(ImAxis_X1, 0, 10, ImGuiCond_Always);
+            ImPlot::SetupAxisLimits(ImAxis_X1, 0, x_axis_range_, ImGuiCond_Always);
 
             if (auto_scale_y_) {
                 ImPlot::SetupAxisLimits(ImAxis_Y1, -5, 5, ImGuiCond_Once);
@@ -160,7 +174,7 @@ private:
         ImGui::SetColumnWidth(1, 50);
         ImGui::SetColumnWidth(2, 120);
 
-        ImGui::Text(""); ImGui::NextColumn();
+        ImGui::TextUnformatted(""); ImGui::NextColumn();
         ImGui::Text("通道"); ImGui::NextColumn();
         ImGui::Text("数值"); ImGui::NextColumn();
         ImGui::Separator();
@@ -172,11 +186,24 @@ private:
             ChannelConfig config = channel_manager_.GetChannelConfig(i);
             ChannelStats stats = channel_manager_.GetChannelStats(i);
 
-            // 复选框
+            // 眼睛图标按钮（可见性开关）
             bool enabled = config.enabled;
-            if (ImGui::Checkbox("##en", &enabled)) {
-                channel_manager_.SetChannelEnabled(i, enabled);
+            const char* icon = enabled ? "●" : "○";  // 实心圆=可见，空心圆=隐藏
+            ImVec4 button_color = enabled
+                ? ImVec4(0.30f, 0.70f, 1.00f, 1.00f)   // 蓝色（开启）
+                : ImVec4(0.50f, 0.50f, 0.50f, 0.50f);  // 灰色（关闭）
+
+            ImGui::PushStyleColor(ImGuiCol_Button, button_color);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                ImVec4(button_color.x * 1.2f, button_color.y * 1.2f, button_color.z * 1.2f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,
+                ImVec4(button_color.x * 0.8f, button_color.y * 0.8f, button_color.z * 0.8f, 1.0f));
+
+            if (ImGui::Button(icon, ImVec2(20, 20))) {
+                channel_manager_.SetChannelEnabled(i, !enabled);
             }
+
+            ImGui::PopStyleColor(3);
             ImGui::NextColumn();
 
             // 通道名（带颜色指示器）
@@ -203,31 +230,70 @@ private:
      * @brief 渲染底部状态栏（紧凑参数）
      */
     void RenderStatusBar() {
+        // 计算总数据点数（所有启用通道）
+        size_t total_points = 0;
+        for (size_t i = 0; i < DataChannelManager::MAX_CHANNELS; i++) {
+            ChannelConfig config = channel_manager_.GetChannelConfig(i);
+            if (config.enabled) {
+                ChannelStats stats = channel_manager_.GetChannelStats(i);
+                total_points += stats.sample_count;
+            }
+        }
+
         // 协议选择
-        const char* protocols[] = {"FireWater", "JustFloat", "RawData", "Custom"};
+        const char* protocols[] = {"FireWater", "JustFloat", "RawData", "CSV", "Custom"};
         int current = static_cast<int>(current_protocol_type_);
 
-        ImGui::Text("Δt:");
+        // X轴时间范围配置
+        ImGui::Text("X轴范围:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(100);
+        ImGui::SliderFloat("##xrange", &x_axis_range_, 1.0f, 60.0f, "%.1fs");
+
+        ImGui::SameLine();
+        ImGui::Text("  总点数:");
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.30f, 0.70f, 1.00f, 1.0f), "%zu", total_points);
+
+        ImGui::SameLine();
+        ImGui::Text("  Δt:");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(60);
         ImGui::InputInt("##dt", &sample_interval_ms_, 0, 0, ImGuiInputTextFlags_ReadOnly);
-
         ImGui::SameLine();
-        ImGui::Text("ms   缓冲区上限:");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(80);
-        int buffer_limit = 50000;
-        ImGui::InputInt("##buffer", &buffer_limit, 0, 0, ImGuiInputTextFlags_ReadOnly);
-
-        ImGui::SameLine();
-        ImGui::Text("/ch   Auto点数对齐:");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(80);
-        int auto_align = 101;
-        ImGui::InputInt("##align", &auto_align, 0, 0, ImGuiInputTextFlags_ReadOnly);
+        ImGui::Text("ms");
 
         ImGui::SameLine();
         ImGui::Dummy(ImVec2(20, 0));
+        ImGui::SameLine();
+
+        // 通道数配置
+        ImGui::Text("通道数:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(60);
+        int temp_channel_count = channel_count_;
+        if (ImGui::InputInt("##channels", &temp_channel_count, 1, 1)) {
+            // 限制范围：1-16通道
+            if (temp_channel_count < 1) temp_channel_count = 1;
+            if (temp_channel_count > 16) temp_channel_count = 16;
+
+            if (temp_channel_count != channel_count_) {
+                channel_count_ = temp_channel_count;
+
+                // 更新协议解析器的通道数
+                if (protocol_parser_) {
+                    protocol_parser_->SetExpectedChannelCount(channel_count_);
+                }
+
+                // 自动启用相应数量的通道
+                for (size_t i = 0; i < DataChannelManager::MAX_CHANNELS; i++) {
+                    channel_manager_.SetChannelEnabled(i, static_cast<int>(i) < channel_count_);
+                }
+            }
+        }
+
+        ImGui::SameLine();
+        ImGui::Dummy(ImVec2(10, 0));
         ImGui::SameLine();
 
         ImGui::SetNextItemWidth(100);
@@ -242,6 +308,8 @@ private:
 
     bool auto_scale_y_;
     int sample_interval_ms_ = 1;
+    int channel_count_ = 4;  // 默认4通道
+    float x_axis_range_ = 10.0f;  // X轴显示范围（秒）
 };
 
 #endif // VISUALIZATION_UI_H
