@@ -50,50 +50,50 @@ static void glfw_error_callback(int error, const char* description) {
     fprintf(stderr, "GLFW Error %d: %s\n", error, description);
 }
 
-// 设置ImGui样式 - 现代深色主题
+// 设置ImGui样式 - 现代深色主题（优化版）
 void SetupImGuiStyle() {
     ImGuiStyle& style = ImGui::GetStyle();
     ImVec4* colors = style.Colors;
 
-    // 主色调配置
+    // 主色调配置（优化版）
     const ImVec4 bg_color = ImVec4(0.10f, 0.12f, 0.15f, 1.00f);           // 深蓝灰背景
     const ImVec4 widget_bg = ImVec4(0.14f, 0.16f, 0.20f, 1.00f);          // 控件背景
     const ImVec4 widget_bg_hover = ImVec4(0.18f, 0.20f, 0.25f, 1.00f);   // 悬停
     const ImVec4 widget_bg_active = ImVec4(0.22f, 0.25f, 0.30f, 1.00f);  // 激活
-    const ImVec4 accent_color = ImVec4(0.26f, 0.59f, 0.98f, 1.00f);      // 强调色（蓝色）
+    const ImVec4 accent_color = ImVec4(0.30f, 0.70f, 1.00f, 1.00f);      // 强调色（更亮的蓝色）
     const ImVec4 text_color = ImVec4(0.95f, 0.96f, 0.98f, 1.00f);        // 文字颜色
 
-    // 圆角设置
-    style.WindowRounding = 8.0f;
+    // 圆角设置（统一为 6px）
+    style.WindowRounding = 6.0f;
     style.ChildRounding = 6.0f;
-    style.FrameRounding = 4.0f;
+    style.FrameRounding = 6.0f;
     style.PopupRounding = 6.0f;
-    style.ScrollbarRounding = 8.0f;
-    style.GrabRounding = 4.0f;
+    style.ScrollbarRounding = 6.0f;
+    style.GrabRounding = 6.0f;
     style.TabRounding = 6.0f;
 
-    // 间距设置
-    style.WindowPadding = ImVec2(12, 12);
-    style.FramePadding = ImVec2(8, 6);
-    style.ItemSpacing = ImVec2(10, 8);
-    style.ItemInnerSpacing = ImVec2(6, 4);
-    style.ScrollbarSize = 14.0f;
-    style.GrabMinSize = 10.0f;
+    // 间距设置（优化版）
+    style.WindowPadding = ImVec2(14, 14);      // 增加内边距
+    style.FramePadding = ImVec2(10, 7);        // 控件更舒适
+    style.ItemSpacing = ImVec2(12, 10);        // 控件间距更宽松
+    style.ItemInnerSpacing = ImVec2(8, 6);     // 内部间距
+    style.ScrollbarSize = 16.0f;               // 滚动条更宽（高DPI友好）
+    style.GrabMinSize = 12.0f;                 // 滑块更大
 
-    // 边框
+    // 边框（添加微妙阴影）
     style.WindowBorderSize = 1.0f;
     style.ChildBorderSize = 1.0f;
     style.PopupBorderSize = 1.0f;
     style.FrameBorderSize = 0.0f;
 
-    // 颜色主题
+    // 颜色主题（更新强调色）
     colors[ImGuiCol_Text] = text_color;
     colors[ImGuiCol_TextDisabled] = ImVec4(0.50f, 0.50f, 0.50f, 1.00f);
     colors[ImGuiCol_WindowBg] = bg_color;
     colors[ImGuiCol_ChildBg] = widget_bg;
     colors[ImGuiCol_PopupBg] = ImVec4(0.12f, 0.14f, 0.17f, 0.98f);
-    colors[ImGuiCol_Border] = ImVec4(0.25f, 0.27f, 0.30f, 0.80f);
-    colors[ImGuiCol_BorderShadow] = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    colors[ImGuiCol_Border] = ImVec4(0.28f, 0.30f, 0.33f, 0.80f);         // 更明显的边框
+    colors[ImGuiCol_BorderShadow] = ImVec4(0.00f, 0.00f, 0.00f, 0.10f);   // 添加阴影
     colors[ImGuiCol_FrameBg] = widget_bg;
     colors[ImGuiCol_FrameBgHovered] = widget_bg_hover;
     colors[ImGuiCol_FrameBgActive] = widget_bg_active;
@@ -102,23 +102,23 @@ void SetupImGuiStyle() {
     colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.08f, 0.10f, 0.13f, 0.75f);
     colors[ImGuiCol_MenuBarBg] = ImVec4(0.12f, 0.14f, 0.17f, 1.00f);
     colors[ImGuiCol_ScrollbarBg] = ImVec4(0.10f, 0.12f, 0.15f, 1.00f);
-    colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.25f, 0.27f, 0.30f, 1.00f);
-    colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.35f, 0.37f, 0.40f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.28f, 0.30f, 0.33f, 1.00f);  // 更明显
+    colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.38f, 0.40f, 0.43f, 1.00f);
     colors[ImGuiCol_ScrollbarGrabActive] = accent_color;
     colors[ImGuiCol_CheckMark] = accent_color;
     colors[ImGuiCol_SliderGrab] = accent_color;
-    colors[ImGuiCol_SliderGrabActive] = ImVec4(0.36f, 0.69f, 1.00f, 1.00f);
+    colors[ImGuiCol_SliderGrabActive] = ImVec4(0.40f, 0.80f, 1.00f, 1.00f);
     colors[ImGuiCol_Button] = widget_bg;
     colors[ImGuiCol_ButtonHovered] = widget_bg_hover;
     colors[ImGuiCol_ButtonActive] = widget_bg_active;
     colors[ImGuiCol_Header] = widget_bg_hover;
     colors[ImGuiCol_HeaderHovered] = widget_bg_active;
     colors[ImGuiCol_HeaderActive] = accent_color;
-    colors[ImGuiCol_Separator] = ImVec4(0.25f, 0.27f, 0.30f, 1.00f);
-    colors[ImGuiCol_SeparatorHovered] = ImVec4(0.35f, 0.37f, 0.40f, 1.00f);
+    colors[ImGuiCol_Separator] = ImVec4(0.28f, 0.30f, 0.33f, 1.00f);      // 更明显
+    colors[ImGuiCol_SeparatorHovered] = ImVec4(0.38f, 0.40f, 0.43f, 1.00f);
     colors[ImGuiCol_SeparatorActive] = accent_color;
-    colors[ImGuiCol_ResizeGrip] = ImVec4(0.25f, 0.27f, 0.30f, 0.50f);
-    colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.35f, 0.37f, 0.40f, 0.75f);
+    colors[ImGuiCol_ResizeGrip] = ImVec4(0.28f, 0.30f, 0.33f, 0.50f);
+    colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.38f, 0.40f, 0.43f, 0.75f);
     colors[ImGuiCol_ResizeGripActive] = accent_color;
     colors[ImGuiCol_Tab] = widget_bg;
     colors[ImGuiCol_TabHovered] = widget_bg_hover;
@@ -129,7 +129,7 @@ void SetupImGuiStyle() {
     colors[ImGuiCol_PlotLinesHovered] = ImVec4(1.00f, 0.43f, 0.35f, 1.00f);
     colors[ImGuiCol_PlotHistogram] = accent_color;
     colors[ImGuiCol_PlotHistogramHovered] = ImVec4(1.00f, 0.60f, 0.00f, 1.00f);
-    colors[ImGuiCol_TextSelectedBg] = ImVec4(0.26f, 0.59f, 0.98f, 0.35f);
+    colors[ImGuiCol_TextSelectedBg] = ImVec4(0.30f, 0.70f, 1.00f, 0.35f);
     colors[ImGuiCol_DragDropTarget] = accent_color;
     colors[ImGuiCol_NavHighlight] = accent_color;
     colors[ImGuiCol_NavWindowingHighlight] = ImVec4(1.00f, 1.00f, 1.00f, 0.70f);
@@ -182,6 +182,41 @@ void RenderSidebar(AppState& state) {
     ImGui::EndChild();
 }
 
+// 添加数据到日志（支持时间戳和方向）
+void AddDataLog(AppState* state, const std::string& content, DataDirection direction) {
+    std::lock_guard<std::mutex> lock(state->log_mutex);
+
+    DataLogEntry entry;
+    entry.direction = direction;
+    entry.content = content;
+
+    // 生成时间戳
+    if (state->show_timestamp) {
+        auto now = std::chrono::system_clock::now();
+        auto now_c = std::chrono::system_clock::to_time_t(now);
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now.time_since_epoch()) % 1000;
+
+        struct tm timeinfo;
+        localtime_s(&timeinfo, &now_c);
+        char buf[32];
+        sprintf(buf, "[%02d:%02d:%02d.%03d]",
+                timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, (int)ms.count());
+        entry.timestamp = buf;
+    }
+
+    // 添加到日志
+    state->data_log.push_back(entry);
+
+    // 限制日志条数（避免内存溢出）
+    if (state->data_log.size() > state->max_log_entries) {
+        state->data_log.erase(state->data_log.begin(),
+                              state->data_log.begin() + 1000);
+    }
+
+    state->scroll_to_bottom = true;
+}
+
 // 数据处理函数（在后台线程中执行）
 void ProcessDataPacket(AppState* state, const std::vector<unsigned char>& data) {
     size_t length = data.size();
@@ -189,44 +224,27 @@ void ProcessDataPacket(AppState* state, const std::vector<unsigned char>& data) 
     // 传递原始数据给可视化系统
     state->visualization_ui.ProcessReceivedData(data.data(), length);
 
-    // 格式转换
+    // 编码转换
     std::string dataStr;
     if (state->hex_display) {
         dataStr = DataConverter::BytesToHexString(data.data(), length, true);
     } else {
-        dataStr = DataConverter::BytesToAsciiString(data.data(), length, true);
+        // 使用指定编码转换为UTF-8
+        dataStr = DataConverter::ConvertToUTF8(data.data(), length, state->encoding_type);
     }
 
-    // 准备日志数据
-    bool should_log = false;
-    std::string log_filename_copy;
-    if (state->enable_logging && !state->log_filename.empty()) {
-        should_log = true;
-        log_filename_copy = state->log_filename;
-    }
+    // 添加到数据日志（分色显示：RX为蓝色）
+    AddDataLog(state, dataStr, DataDirection::RX);
 
-    // 缩小锁范围：只在必要时持有锁
+    // 更新统计信息
     {
         std::lock_guard<std::mutex> lock(state->receive_mutex);
-
-        // 追加到接收缓冲区
-        size_t available_space = sizeof(state->receive_buffer) - state->receive_buffer_pos - 1;
-        size_t data_len = dataStr.length();
-
-        if (data_len + 1 < available_space) {
-            memcpy(state->receive_buffer + state->receive_buffer_pos, dataStr.c_str(), data_len);
-            state->receive_buffer_pos += data_len;
-            state->receive_buffer[state->receive_buffer_pos++] = '\n';
-            state->receive_buffer[state->receive_buffer_pos] = '\0';
-        }
-
         state->bytes_received += length;
-        state->scroll_to_bottom = true;
     }
 
-    // 文件写入在锁外执行（避免阻塞）
-    if (should_log) {
-        std::ofstream logFile(log_filename_copy, std::ios::app);
+    // 文件写入（锁外执行，避免阻塞）
+    if (state->enable_logging && !state->log_filename.empty()) {
+        std::ofstream logFile(state->log_filename, std::ios::app);
         if (logFile.is_open()) {
             auto now = std::chrono::system_clock::now();
             auto now_c = std::chrono::system_clock::to_time_t(now);
@@ -235,8 +253,25 @@ void ProcessDataPacket(AppState* state, const std::vector<unsigned char>& data) 
             char timeStr[64];
             strftime(timeStr, sizeof(timeStr), "[%Y-%m-%d %H:%M:%S] ", &timeinfo);
 
-            logFile << timeStr << dataStr << std::endl;
+            logFile << timeStr << "RX: " << dataStr << std::endl;
             logFile.close();
+        }
+    }
+
+    // 同时保持旧的receive_buffer兼容性（可选）
+    {
+        std::lock_guard<std::mutex> lock(state->receive_mutex);
+        size_t available_space = sizeof(state->receive_buffer) - state->receive_buffer_pos - 1;
+        size_t data_len = dataStr.length();
+
+        if (data_len + 5 < available_space) {  // 5 = "RX: " + '\n'
+            const char* prefix = "RX: ";
+            memcpy(state->receive_buffer + state->receive_buffer_pos, prefix, 4);
+            state->receive_buffer_pos += 4;
+            memcpy(state->receive_buffer + state->receive_buffer_pos, dataStr.c_str(), data_len);
+            state->receive_buffer_pos += data_len;
+            state->receive_buffer[state->receive_buffer_pos++] = '\n';
+            state->receive_buffer[state->receive_buffer_pos] = '\0';
         }
     }
 }
@@ -423,18 +458,31 @@ void RenderDataDisplayPanel(AppState& state) {
     ImGui::Separator();
     ImGui::Spacing();
 
-    // 显示选项
+    // 第一行：HEX显示、时间戳、自动滚动、清空
     ImGui::Checkbox("HEX显示", &state.hex_display);
+    ImGui::SameLine();
+    ImGui::Checkbox("显示时间戳", &state.show_timestamp);
     ImGui::SameLine();
     ImGui::Checkbox("自动滚动", &state.auto_scroll);
     ImGui::SameLine();
     if (ImGui::Button("清空")) {
+        std::lock_guard<std::mutex> lock(state.log_mutex);
+        state.data_log.clear();
         state.receive_buffer[0] = '\0';
         state.receive_buffer_pos = 0;
         state.bytes_received = 0;
     }
 
-    // 日志控制
+    // 第二行：编码选择、日志控制
+    ImGui::PushItemWidth(120);
+    const char* encodings[] = { "UTF-8", "GBK", "ASCII" };
+    int encoding_index = static_cast<int>(state.encoding_type);
+    if (ImGui::Combo("编码", &encoding_index, encodings, 3)) {
+        state.encoding_type = static_cast<EncodingType>(encoding_index);
+    }
+    ImGui::PopItemWidth();
+
+    ImGui::SameLine();
     ImGui::Checkbox("保存日志", &state.enable_logging);
     if (state.enable_logging && state.log_filename.empty()) {
         // 自动生成日志文件名
@@ -448,16 +496,48 @@ void RenderDataDisplayPanel(AppState& state) {
     }
     if (state.enable_logging) {
         ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0.3f, 0.8f, 0.3f, 1.0f), "Logging: %s", state.log_filename.c_str());
+        ImGui::TextColored(ImVec4(0.3f, 0.8f, 0.3f, 1.0f), "%s", state.log_filename.c_str());
     }
 
     ImGui::Separator();
 
-    // 数据显示区（多行文本框）
-    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.08f, 0.10f, 0.13f, 1.00f));
-    ImGui::InputTextMultiline("##receive", state.receive_buffer, sizeof(state.receive_buffer),
-                               ImVec2(-FLT_MIN, ImGui::GetContentRegionAvail().y - 30),
-                               ImGuiInputTextFlags_ReadOnly);
+    // 数据显示区（分色显示：RX蓝色，TX绿色）
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.08f, 0.10f, 0.13f, 1.00f));
+    ImGui::BeginChild("##DataLogWindow", ImVec2(-FLT_MIN, ImGui::GetContentRegionAvail().y - 30),
+                      true, ImGuiWindowFlags_HorizontalScrollbar);
+
+    // 渲染数据日志（带颜色区分 + 虚拟化滚动）
+    {
+        std::lock_guard<std::mutex> lock(state.log_mutex);
+
+        // 使用 ImGuiListClipper 进行虚拟化渲染（性能优化）
+        ImGuiListClipper clipper;
+        clipper.Begin(static_cast<int>(state.data_log.size()));
+
+        while (clipper.Step()) {
+            for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
+                const auto& entry = state.data_log[i];
+
+                // 设置颜色：RX蓝色，TX绿色
+                ImVec4 color;
+                const char* prefix;
+                if (entry.direction == DataDirection::RX) {
+                    color = ImVec4(0.4f, 0.7f, 1.0f, 1.0f);  // 亮蓝色
+                    prefix = "RX";
+                } else {
+                    color = ImVec4(0.4f, 1.0f, 0.4f, 1.0f);  // 亮绿色
+                    prefix = "TX";
+                }
+
+                // 显示格式：[时间戳] RX/TX: 数据内容
+                if (state.show_timestamp && !entry.timestamp.empty()) {
+                    ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "%s", entry.timestamp.c_str());
+                    ImGui::SameLine();
+                }
+                ImGui::TextColored(color, "%s: %s", prefix, entry.content.c_str());
+            }
+        }
+    }
 
     // 自动滚动到底部
     if (state.auto_scroll && state.scroll_to_bottom) {
@@ -465,10 +545,31 @@ void RenderDataDisplayPanel(AppState& state) {
         state.scroll_to_bottom = false;
     }
 
+    ImGui::EndChild();
     ImGui::PopStyleColor();
 
     // 统计信息
-    ImGui::Text("已接收: %d 字节", state.bytes_received);
+    ImGui::Text("已接收: %d 字节  已发送: %d 字节", state.bytes_received, state.bytes_sent);
+}
+
+// 添加发送历史（去重）
+void AddSendHistory(AppState* state, const std::string& data) {
+    if (data.empty()) return;
+
+    // 检查是否已存在
+    auto it = std::find(state->send_history.begin(), state->send_history.end(), data);
+    if (it != state->send_history.end()) {
+        // 已存在，移到最前面
+        state->send_history.erase(it);
+    }
+
+    // 插入到最前面
+    state->send_history.insert(state->send_history.begin(), data);
+
+    // 限制历史记录数量
+    if (state->send_history.size() > 20) {
+        state->send_history.resize(20);
+    }
 }
 
 // 渲染发送控制面板
@@ -478,35 +579,82 @@ void RenderSendPanel(AppState& state) {
     ImGui::Separator();
     ImGui::Spacing();
 
-    // 发送选项
+    // 第一行：HEX发送
     ImGui::Checkbox("HEX发送", &state.hex_send);
+
+    // 第二行：行尾符选择
+    ImGui::Text("行尾符:");
+    ImGui::PushItemWidth(120);
+    const char* line_endings[] = { "无", "\\r", "\\n", "\\r\\n" };
+    int ending_index = static_cast<int>(state.send_line_ending);
+    if (ImGui::Combo("##line_ending", &ending_index, line_endings, 4)) {
+        state.send_line_ending = static_cast<LineEnding>(ending_index);
+    }
+    ImGui::PopItemWidth();
+
+    // 第三行：自定义前缀
+    ImGui::Checkbox("自定义前缀", &state.enable_custom_prefix);
+    if (state.enable_custom_prefix) {
+        ImGui::SameLine();
+        ImGui::PushItemWidth(200);
+        ImGui::InputText("##custom_prefix", state.custom_prefix, sizeof(state.custom_prefix));
+        ImGui::PopItemWidth();
+    }
+
+    // 第四行：自定义后缀
+    ImGui::Checkbox("自定义后缀", &state.enable_custom_suffix);
+    if (state.enable_custom_suffix) {
+        ImGui::SameLine();
+        ImGui::PushItemWidth(200);
+        ImGui::InputText("##custom_suffix", state.custom_suffix, sizeof(state.custom_suffix));
+        ImGui::PopItemWidth();
+    }
+
+    // 发送历史下拉框
+    if (!state.send_history.empty()) {
+        ImGui::Text("发送历史:");
+        ImGui::PushItemWidth(-FLT_MIN);
+        if (ImGui::BeginCombo("##send_history", "选择历史记录")) {
+            for (size_t i = 0; i < state.send_history.size(); i++) {
+                const std::string& history = state.send_history[i];
+                // 限制显示长度
+                std::string display = history.length() > 50 ?
+                                     (history.substr(0, 47) + "...") : history;
+
+                if (ImGui::Selectable(display.c_str())) {
+                    strcpy_s(state.send_buffer, sizeof(state.send_buffer), history.c_str());
+                }
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::PopItemWidth();
+    }
 
     ImGui::Separator();
     ImGui::Spacing();
 
     // 定时发送
-    ImGui::Text("定时发送:");
     ImGui::Checkbox("启用定时发送", &state.enable_auto_send);
-
     if (state.enable_auto_send) {
-        ImGui::Text("发送间隔(毫秒):");
-        ImGui::PushItemWidth(200);
-        ImGui::InputInt("##interval", &state.auto_send_interval_ms, 100, 1000);
+        ImGui::SameLine();
+        ImGui::PushItemWidth(120);
+        ImGui::InputInt("##interval", &state.auto_send_interval_ms, 100, 500);
         ImGui::PopItemWidth();
+        ImGui::SameLine();
+        ImGui::Text("ms");
 
         // 限制间隔范围
         if (state.auto_send_interval_ms < 100) state.auto_send_interval_ms = 100;
         if (state.auto_send_interval_ms > 60000) state.auto_send_interval_ms = 60000;
 
-        // 显示下次发送倒计时
+        // 显示倒计时
         if (state.is_connected) {
             auto now = std::chrono::steady_clock::now();
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - state.last_send_time).count();
             int remaining = state.auto_send_interval_ms - elapsed;
             if (remaining < 0) remaining = 0;
-            ImGui::TextColored(ImVec4(0.3f, 0.8f, 0.3f, 1.0f), "下次发送: %d ms", remaining);
-        } else {
-            ImGui::TextColored(ImVec4(0.8f, 0.3f, 0.3f, 1.0f), "未连接");
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(0.3f, 0.8f, 0.3f, 1.0f), "(%d ms)", remaining);
         }
     }
 
@@ -515,7 +663,7 @@ void RenderSendPanel(AppState& state) {
     // 发送输入框
     ImGui::Text("发送数据:");
     ImGui::PushItemWidth(-FLT_MIN);
-    ImGui::InputTextMultiline("##send", state.send_buffer, sizeof(state.send_buffer), ImVec2(-FLT_MIN, 150));
+    ImGui::InputTextMultiline("##send", state.send_buffer, sizeof(state.send_buffer), ImVec2(-FLT_MIN, 120));
     ImGui::PopItemWidth();
 
     // 发送按钮
@@ -524,23 +672,67 @@ void RenderSendPanel(AppState& state) {
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.36f, 0.69f, 1.00f, 1.0f));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.16f, 0.49f, 0.88f, 1.0f));
 
-    if (ImGui::Button("发送数据", ImVec2(-FLT_MIN, 45))) {
+    if (ImGui::Button("发送数据", ImVec2(-FLT_MIN, 40))) {
         if (state.is_connected && state.send_buffer[0] != '\0') {
+            // 构建最终发送数据
+            std::string final_data;
+
+            // 添加自定义前缀
+            if (state.enable_custom_prefix && state.custom_prefix[0] != '\0') {
+                final_data += state.custom_prefix;
+            }
+
+            // 添加主体数据
+            final_data += state.send_buffer;
+
+            // 添加自定义后缀
+            if (state.enable_custom_suffix && state.custom_suffix[0] != '\0') {
+                final_data += state.custom_suffix;
+            }
+
+            // 添加行尾符
+            switch (state.send_line_ending) {
+                case LineEnding::CR:   final_data += "\r"; break;
+                case LineEnding::LF:   final_data += "\n"; break;
+                case LineEnding::CRLF: final_data += "\r\n"; break;
+                case LineEnding::NONE: break;
+            }
+
+            // 发送数据
+            int sent = 0;
             if (state.hex_send) {
                 // HEX发送
                 std::vector<unsigned char> hexData;
-                if (DataConverter::HexStringToBytes(state.send_buffer, hexData)) {
-                    int sent = state.serial_port.Write(hexData.data(), hexData.size());
-                    if (sent > 0) {
-                        state.bytes_sent += sent;
-                    }
+                if (DataConverter::HexStringToBytes(final_data, hexData)) {
+                    sent = state.serial_port.Write(hexData.data(), hexData.size());
                 }
             } else {
-                // ASCII发送
-                int sent = state.serial_port.Write(state.send_buffer);
-                if (sent > 0) {
-                    state.bytes_sent += sent;
+                // 编码转换后发送
+                std::vector<unsigned char> encoded_data;
+                if (DataConverter::ConvertFromUTF8(final_data, state.encoding_type, encoded_data)) {
+                    sent = state.serial_port.Write(encoded_data.data(), encoded_data.size());
+                } else {
+                    sent = state.serial_port.Write(final_data);
                 }
+            }
+
+            // 更新统计和日志
+            if (sent > 0) {
+                state.bytes_sent += sent;
+
+                // 添加到数据日志（TX绿色显示）
+                std::string display_data;
+                if (state.hex_send) {
+                    std::vector<unsigned char> hexData;
+                    DataConverter::HexStringToBytes(final_data, hexData);
+                    display_data = DataConverter::BytesToHexString(hexData.data(), hexData.size(), true);
+                } else {
+                    display_data = state.send_buffer;  // 只显示用户输入的部分
+                }
+                AddDataLog(&state, display_data, DataDirection::TX);
+
+                // 添加到发送历史
+                AddSendHistory(&state, state.send_buffer);
             }
         }
     }
@@ -626,14 +818,27 @@ void RenderSettingsDialog(AppState& state) {
     ImGui::End();
 }
 
-// 渲染串口收发视图（三列布局）
+// 渲染串口收发视图（三列布局 - 响应式设计）
 void RenderSerialTerminalView(AppState& state) {
     ImVec2 content_size = ImGui::GetContentRegionAvail();
 
-    // 三列宽度
-    float left_width = 340.0f;
-    float right_width = 390.0f;
-    float spacing = 10.0f;
+    // 响应式布局：使用百分比分配（可轻松调整比例）
+    float left_ratio = 0.24f;    // 24% - 串口配置
+    float right_ratio = 0.28f;   // 28% - 发送控制
+    float middle_ratio = 0.48f;  // 48% - 数据显示
+
+    float left_width = content_size.x * left_ratio;
+    float right_width = content_size.x * right_ratio;
+    float middle_width = content_size.x * middle_ratio;
+
+    // 最小宽度保护（防止窗口过小时布局错乱）
+    const float min_left_width = 300.0f;
+    const float min_middle_width = 400.0f;
+    const float min_right_width = 350.0f;
+
+    if (left_width < min_left_width) left_width = min_left_width;
+    if (middle_width < min_middle_width) middle_width = min_middle_width;
+    if (right_width < min_right_width) right_width = min_right_width;
 
     // 左侧：串口配置
     ImGui::BeginChild("LeftPanel", ImVec2(left_width, 0), true);
@@ -643,7 +848,6 @@ void RenderSerialTerminalView(AppState& state) {
     ImGui::SameLine();
 
     // 中央：数据显示
-    float middle_width = content_size.x - left_width - right_width - spacing * 2;
     ImGui::BeginChild("MiddlePanel", ImVec2(middle_width, 0), true);
     RenderDataDisplayPanel(state);
     ImGui::EndChild();
@@ -660,6 +864,10 @@ void RenderSerialTerminalView(AppState& state) {
 #ifdef _WIN32
 int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
     (void)hInstance; (void)hPrevInstance; (void)lpCmdLine; (void)nCmdShow;
+
+    // 设置Windows控制台为UTF-8编码
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
 #else
 int main(int, char**) {
 #endif
@@ -675,7 +883,7 @@ int main(int, char**) {
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
     // 创建窗口
-    GLFWwindow* window = glfwCreateWindow(1400, 900, "串口调试助手 v1.0.0 (ImGui)", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(1400, 900, "串口调试助手 v2.0", NULL, NULL);
     if (window == NULL)
         return 1;
 
@@ -697,8 +905,8 @@ int main(int, char**) {
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
-    // 加载中文字体（优化：仅加载常用简体中文2500字，大幅提升启动速度）
-    io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\msyh.ttc", 20.0f, NULL, io.Fonts->GetGlyphRangesChineseSimplifiedCommon());
+    // 加载中文字体（完整字符集，解决乱码问题）
+    io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\msyh.ttc", 20.0f, NULL, io.Fonts->GetGlyphRangesChineseFull());
 
     // 应用程序状态
     AppState app_state;
