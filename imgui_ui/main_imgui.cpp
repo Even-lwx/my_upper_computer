@@ -33,50 +33,17 @@
 // 可视化系统
 #include "ui/VisualizationUI.h"
 
-// 应用程序状态
-struct AppState {
-    bool show_demo_window = false;  // ImGui演示窗口
-    ImVec4 clear_color = ImVec4(0.10f, 0.12f, 0.15f, 1.00f);  // 背景色
+// 线程池
+#include "core/ThreadPool.h"
+#include <queue>
+#include <memory>
 
-    // 串口配置
-    std::vector<std::string> available_ports;  // 可用串口列表
-    int selected_port_index = 0;
-    int selected_baudrate_index = 7;  // 默认115200
-    int selected_databits_index = 3;  // 默认8位
-    int selected_stopbits_index = 0;  // 默认1位
-    int selected_parity_index = 0;    // 默认无校验
-    bool is_connected = false;
+// 应用程序状态和配置管理
+#include "core/AppState.h"
+#include "core/ConfigManager.h"
 
-    // 串口管理器
-    SerialPort_Win serial_port;
-    std::mutex receive_mutex;  // 接收数据互斥锁
-
-    // 数据显示
-    char receive_buffer[65536] = "";
-    size_t receive_buffer_pos = 0;  // 新增：跟踪缓冲区当前位置，避免strlen
-    char send_buffer[1024] = "";
-    bool hex_display = false;
-    bool hex_send = false;
-    bool auto_scroll = true;
-    bool scroll_to_bottom = false;  // 标记需要滚动到底部
-
-    // 统计信息
-    int bytes_received = 0;
-    int bytes_sent = 0;
-
-    // 日志功能
-    bool enable_logging = false;
-    std::string log_filename;
-
-    // 定时发送
-    bool enable_auto_send = false;
-    int auto_send_interval_ms = 1000;  // 默认1秒
-    std::chrono::steady_clock::time_point last_send_time;
-
-    // 可视化系统
-    VisualizationUI visualization_ui;
-    bool show_visualization = false;  // 是否显示可视化界面
-};
+// 视图类型枚举已移至AppState.h
+// 应用程序状态结构已移至AppState.h
 
 // GLFW错误回调
 static void glfw_error_callback(int error, const char* description) {
@@ -170,12 +137,114 @@ void SetupImGuiStyle() {
     colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.00f, 0.00f, 0.00f, 0.70f);
 }
 
+// 渲染侧边栏（左侧功能按钮栏）
+void RenderSidebar(AppState& state) {
+    ImGui::BeginChild("##Sidebar", ImVec2(80, 0), true, ImGuiWindowFlags_NoScrollbar);
+
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.14f, 0.16f, 0.20f, 1.00f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.22f, 0.25f, 0.30f, 1.00f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.26f, 0.59f, 0.98f, 1.00f));
+
+    // 串口收发按钮
+    bool is_terminal_selected = (state.current_view == ViewType::SERIAL_TERMINAL);
+    if (is_terminal_selected) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.26f, 0.59f, 0.98f, 0.6f));
+    }
+    if (ImGui::Button("串口\n收发", ImVec2(70, 70))) {
+        state.current_view = ViewType::SERIAL_TERMINAL;
+    }
+    if (is_terminal_selected) {
+        ImGui::PopStyleColor();
+    }
+
+    ImGui::Spacing();
+
+    // 波形图按钮
+    bool is_waveform_selected = (state.current_view == ViewType::WAVEFORM);
+    if (is_waveform_selected) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.26f, 0.59f, 0.98f, 0.6f));
+    }
+    if (ImGui::Button("波形\n显示", ImVec2(70, 70))) {
+        state.current_view = ViewType::WAVEFORM;
+    }
+    if (is_waveform_selected) {
+        ImGui::PopStyleColor();
+    }
+
+    ImGui::Spacing();
+
+    // 系统设置按钮
+    if (ImGui::Button("系统\n设置", ImVec2(70, 70))) {
+        state.show_settings_dialog = true;
+    }
+
+    ImGui::PopStyleColor(3);
+    ImGui::EndChild();
+}
+
+// 数据处理函数（在后台线程中执行）
+void ProcessDataPacket(AppState* state, const std::vector<unsigned char>& data) {
+    size_t length = data.size();
+
+    // 传递原始数据给可视化系统
+    state->visualization_ui.ProcessReceivedData(data.data(), length);
+
+    // 格式转换
+    std::string dataStr;
+    if (state->hex_display) {
+        dataStr = DataConverter::BytesToHexString(data.data(), length, true);
+    } else {
+        dataStr = DataConverter::BytesToAsciiString(data.data(), length, true);
+    }
+
+    // 准备日志数据
+    bool should_log = false;
+    std::string log_filename_copy;
+    if (state->enable_logging && !state->log_filename.empty()) {
+        should_log = true;
+        log_filename_copy = state->log_filename;
+    }
+
+    // 缩小锁范围：只在必要时持有锁
+    {
+        std::lock_guard<std::mutex> lock(state->receive_mutex);
+
+        // 追加到接收缓冲区
+        size_t available_space = sizeof(state->receive_buffer) - state->receive_buffer_pos - 1;
+        size_t data_len = dataStr.length();
+
+        if (data_len + 1 < available_space) {
+            memcpy(state->receive_buffer + state->receive_buffer_pos, dataStr.c_str(), data_len);
+            state->receive_buffer_pos += data_len;
+            state->receive_buffer[state->receive_buffer_pos++] = '\n';
+            state->receive_buffer[state->receive_buffer_pos] = '\0';
+        }
+
+        state->bytes_received += length;
+        state->scroll_to_bottom = true;
+    }
+
+    // 文件写入在锁外执行（避免阻塞）
+    if (should_log) {
+        std::ofstream logFile(log_filename_copy, std::ios::app);
+        if (logFile.is_open()) {
+            auto now = std::chrono::system_clock::now();
+            auto now_c = std::chrono::system_clock::to_time_t(now);
+            struct tm timeinfo;
+            localtime_s(&timeinfo, &now_c);
+            char timeStr[64];
+            strftime(timeStr, sizeof(timeStr), "[%Y-%m-%d %H:%M:%S] ", &timeinfo);
+
+            logFile << timeStr << dataStr << std::endl;
+            logFile.close();
+        }
+    }
+}
+
 // 渲染串口配置面板
 void RenderSerialConfigPanel(AppState& state) {
     // 面板标题
-    ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);  // 使用默认字体
     ImGui::TextColored(ImVec4(0.26f, 0.59f, 0.98f, 1.0f), "串口配置");
-    ImGui::PopFont();
     ImGui::Separator();
     ImGui::Spacing();
 
@@ -264,62 +333,17 @@ void RenderSerialConfigPanel(AppState& state) {
                     // 初始化定时发送计时器
                     state.last_send_time = std::chrono::steady_clock::now();
 
-                    // 设置接收回调（优化：缩小锁粒度，将耗时操作移到锁外）
+                    // 设置接收回调（异步处理模式）
                     state.serial_port.SetReceiveCallback([&state](const unsigned char* data, int length) {
-                        // 先进行不需要锁的操作：传递原始数据给可视化系统
-                        if (state.show_visualization) {
-                            state.visualization_ui.ProcessReceivedData(data, length);
-                        }
+                        // 复制数据到队列（快速操作，不阻塞）
+                        std::vector<unsigned char> data_copy(data, data + length);
 
-                        // 格式转换（在锁外进行）
-                        std::string dataStr;
-                        if (state.hex_display) {
-                            dataStr = DataConverter::BytesToHexString(data, length, true);
+                        if (state.thread_config.enable_multithreading && state.thread_pool) {
+                            // 多线程模式：提交到线程池异步处理
+                            state.thread_pool->Enqueue(ProcessDataPacket, &state, data_copy);
                         } else {
-                            dataStr = DataConverter::BytesToAsciiString(data, length, true);
-                        }
-
-                        // 准备日志数据（在锁外进行）
-                        bool should_log = false;
-                        std::string log_filename_copy;
-                        if (state.enable_logging && !state.log_filename.empty()) {
-                            should_log = true;
-                            log_filename_copy = state.log_filename;
-                        }
-
-                        // 缩小锁范围：只在必要时持有锁
-                        {
-                            std::lock_guard<std::mutex> lock(state.receive_mutex);
-
-                            // 追加到接收缓冲区
-                            size_t available_space = sizeof(state.receive_buffer) - state.receive_buffer_pos - 1;
-                            size_t data_len = dataStr.length();
-
-                            if (data_len + 1 < available_space) {
-                                memcpy(state.receive_buffer + state.receive_buffer_pos, dataStr.c_str(), data_len);
-                                state.receive_buffer_pos += data_len;
-                                state.receive_buffer[state.receive_buffer_pos++] = '\n';
-                                state.receive_buffer[state.receive_buffer_pos] = '\0';
-                            }
-
-                            state.bytes_received += length;
-                            state.scroll_to_bottom = true;
-                        }  // 锁在此处释放
-
-                        // 文件写入在锁外执行（避免阻塞）
-                        if (should_log) {
-                            std::ofstream logFile(log_filename_copy, std::ios::app);
-                            if (logFile.is_open()) {
-                                auto now = std::chrono::system_clock::now();
-                                auto now_c = std::chrono::system_clock::to_time_t(now);
-                                struct tm timeinfo;
-                                localtime_s(&timeinfo, &now_c);
-                                char timeStr[64];
-                                strftime(timeStr, sizeof(timeStr), "[%Y-%m-%d %H:%M:%S] ", &timeinfo);
-
-                                logFile << timeStr << dataStr << std::endl;
-                                logFile.close();
-                            }
+                            // 单线程模式：直接同步处理
+                            ProcessDataPacket(&state, data_copy);
                         }
                     });
                 }
@@ -334,7 +358,7 @@ void RenderSerialConfigPanel(AppState& state) {
     ImGui::PopStyleColor(3);
 }
 
-// 渲染数据显示区
+// 渲染数据显示面板
 void RenderDataDisplayPanel(AppState& state) {
     // 面板标题
     ImGui::TextColored(ImVec4(0.26f, 0.59f, 0.98f, 1.0f), "数据显示");
@@ -348,7 +372,7 @@ void RenderDataDisplayPanel(AppState& state) {
     ImGui::SameLine();
     if (ImGui::Button("清空")) {
         state.receive_buffer[0] = '\0';
-        state.receive_buffer_pos = 0;  // 同步重置位置指针
+        state.receive_buffer_pos = 0;
         state.bytes_received = 0;
     }
 
@@ -469,6 +493,111 @@ void RenderSendPanel(AppState& state) {
     ImGui::Text("已发送: %d 字节", state.bytes_sent);
 }
 
+// 渲染设置对话框
+void RenderSettingsDialog(AppState& state) {
+    if (!state.show_settings_dialog) return;
+
+    ImGui::SetNextWindowSize(ImVec2(500, 350), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f),
+                            ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+
+    if (ImGui::Begin("系统设置", &state.show_settings_dialog, ImGuiWindowFlags_NoCollapse)) {
+        ImGui::TextColored(ImVec4(0.26f, 0.59f, 0.98f, 1.0f), "多线程配置");
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // 启用多线程
+        bool enable_mt = state.thread_config.enable_multithreading;
+        if (ImGui::Checkbox("启用多线程处理", &enable_mt)) {
+            state.thread_config.enable_multithreading = enable_mt;
+
+            if (enable_mt && !state.thread_pool) {
+                // 创建线程池
+                state.thread_pool = std::make_unique<ThreadPool>(state.thread_config.num_worker_threads);
+            } else if (!enable_mt && state.thread_pool) {
+                // 销毁线程池
+                state.thread_pool.reset();
+            }
+        }
+
+        if (state.thread_config.enable_multithreading) {
+            ImGui::Spacing();
+            ImGui::Text("工作线程数量:");
+            ImGui::PushItemWidth(400);
+
+            int thread_count = state.thread_config.num_worker_threads;
+            if (ImGui::SliderInt("##thread_count", &thread_count, 1, 8)) {
+                state.thread_config.num_worker_threads = thread_count;
+
+                // 重启线程池以应用新的线程数
+                if (state.thread_pool) {
+                    state.thread_pool->Restart(thread_count);
+                }
+            }
+            ImGui::PopItemWidth();
+
+            ImGui::Spacing();
+            ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
+                              "建议值: CPU核心数 = %d, 推荐设置 2-4 个线程",
+                              std::thread::hardware_concurrency());
+
+            // 显示当前状态
+            if (state.thread_pool) {
+                ImGui::Spacing();
+                ImGui::Separator();
+                ImGui::Spacing();
+                ImGui::Text("当前状态:");
+                ImGui::BulletText("活跃线程: %zu", state.thread_pool->GetThreadCount());
+                ImGui::BulletText("待处理任务: %zu", state.thread_pool->GetTaskCount());
+            }
+        } else {
+            ImGui::Spacing();
+            ImGui::TextColored(ImVec4(0.8f, 0.6f, 0.3f, 1.0f),
+                              "多线程已禁用，所有处理将在主线程中执行");
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // 关闭按钮
+        if (ImGui::Button("确定", ImVec2(120, 40))) {
+            state.show_settings_dialog = false;
+        }
+    }
+    ImGui::End();
+}
+
+// 渲染串口收发视图（三列布局）
+void RenderSerialTerminalView(AppState& state) {
+    ImVec2 content_size = ImGui::GetContentRegionAvail();
+
+    // 三列宽度
+    float left_width = 340.0f;
+    float right_width = 390.0f;
+    float spacing = 10.0f;
+
+    // 左侧：串口配置
+    ImGui::BeginChild("LeftPanel", ImVec2(left_width, 0), true);
+    RenderSerialConfigPanel(state);
+    ImGui::EndChild();
+
+    ImGui::SameLine();
+
+    // 中央：数据显示
+    float middle_width = content_size.x - left_width - right_width - spacing * 2;
+    ImGui::BeginChild("MiddlePanel", ImVec2(middle_width, 0), true);
+    RenderDataDisplayPanel(state);
+    ImGui::EndChild();
+
+    ImGui::SameLine();
+
+    // 右侧：发送控制
+    ImGui::BeginChild("RightPanel", ImVec2(right_width, 0), true);
+    RenderSendPanel(state);
+    ImGui::EndChild();
+}
+
 // 主函数（Windows GUI应用入口）
 #ifdef _WIN32
 int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
@@ -515,6 +644,14 @@ int main(int, char**) {
 
     // 应用程序状态
     AppState app_state;
+
+    // 加载保存的配置
+    ConfigManager::LoadConfig(app_state);
+
+    // 初始化线程池（如果启用了多线程）
+    if (app_state.thread_config.enable_multithreading) {
+        app_state.thread_pool = std::make_unique<ThreadPool>(app_state.thread_config.num_worker_threads);
+    }
 
     // 延迟串口枚举标志（启动时不枚举，首次渲染时再枚举，加快启动速度）
     bool ports_enumerated = false;
@@ -572,60 +709,67 @@ int main(int, char**) {
 
         ImGui::Begin("MainWindow", nullptr, main_window_flags);
 
-        // 菜单栏
+        // 顶部菜单栏
         if (ImGui::BeginMenuBar()) {
+            ImGui::TextColored(ImVec4(0.26f, 0.59f, 0.98f, 1.0f), "串口调试助手 v2.0");
+
+            ImGui::Dummy(ImVec2(20, 0));
+
             if (ImGui::BeginMenu("文件")) {
                 if (ImGui::MenuItem("退出", "Alt+F4")) {
                     glfwSetWindowShouldClose(window, true);
                 }
                 ImGui::EndMenu();
             }
-            if (ImGui::BeginMenu("可视化")) {
-                ImGui::MenuItem("显示可视化界面", NULL, &app_state.show_visualization);
-                ImGui::EndMenu();
-            }
+
             if (ImGui::BeginMenu("帮助")) {
-                ImGui::MenuItem("显示演示窗口", NULL, &app_state.show_demo_window);
+                ImGui::MenuItem("ImGui演示", NULL, &app_state.show_demo_window);
                 ImGui::EndMenu();
             }
+
+            // 右侧显示连接状态
+            float status_x = ImGui::GetIO().DisplaySize.x - 150;
+            ImGui::SameLine(status_x);
+            if (app_state.is_connected) {
+                ImGui::TextColored(ImVec4(0.3f, 0.8f, 0.3f, 1.0f), "● 已连接");
+            } else {
+                ImGui::TextColored(ImVec4(0.8f, 0.3f, 0.3f, 1.0f), "○ 未连接");
+            }
+
             ImGui::EndMenuBar();
         }
 
-        // 使用Child窗口创建三列布局
-        float left_width = 340.0f;
-        float right_width = 390.0f;
-        float spacing = 10.0f;
+        // 主布局：左侧侧边栏 + 右侧内容区
+        ImVec2 content_size = ImGui::GetContentRegionAvail();
 
-        // 左侧：串口配置
-        ImGui::BeginChild("LeftPanel", ImVec2(left_width, 0), true);
-        RenderSerialConfigPanel(app_state);
-        ImGui::EndChild();
+        // 左侧侧边栏（80px）
+        RenderSidebar(app_state);
 
         ImGui::SameLine();
 
-        // 中央：数据显示
-        float middle_width = ImGui::GetContentRegionAvail().x - right_width - spacing;
-        ImGui::BeginChild("MiddlePanel", ImVec2(middle_width, 0), true);
-        RenderDataDisplayPanel(app_state);
-        ImGui::EndChild();
+        // 右侧内容区（根据当前视图切换显示）
+        ImGui::BeginChild("##ContentArea", ImVec2(content_size.x - 80, 0), false);
 
-        ImGui::SameLine();
+        switch (app_state.current_view) {
+            case ViewType::SERIAL_TERMINAL:
+                RenderSerialTerminalView(app_state);
+                break;
 
-        // 右侧：发送控制
-        ImGui::BeginChild("RightPanel", ImVec2(0, 0), true);
-        RenderSendPanel(app_state);
+            case ViewType::WAVEFORM:
+                app_state.visualization_ui.Render();
+                break;
+        }
+
         ImGui::EndChild();
 
         ImGui::End();
 
-        // 渲染可视化界面
-        if (app_state.show_visualization) {
-            app_state.visualization_ui.Render();
-        }
-
         // ImGui演示窗口（可选，用于学习）
         if (app_state.show_demo_window)
             ImGui::ShowDemoWindow(&app_state.show_demo_window);
+
+        // 设置对话框
+        RenderSettingsDialog(app_state);
 
         // 渲染
         ImGui::Render();
@@ -639,6 +783,9 @@ int main(int, char**) {
 
         glfwSwapBuffers(window);
     }
+
+    // 保存配置
+    ConfigManager::SaveConfig(app_state);
 
     // 清理
     ImPlot::DestroyContext();  // 销毁ImPlot上下文

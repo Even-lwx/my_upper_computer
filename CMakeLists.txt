@@ -41,6 +41,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(implot)
 
+# nlohmann/json - JSON序列化库（用于配置持久化）
+FetchContent_Declare(
+    json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.11.3
+)
+FetchContent_MakeAvailable(json)
+
 # ========================================
 # 创建ImGui静态库
 # ========================================
@@ -101,11 +109,14 @@ include_directories(
 
 # ImGui UI源文件
 file(GLOB IMGUI_UI_SOURCES
-    "${CMAKE_SOURCE_DIR}/../imgui_ui/*.cpp"
+    "${CMAKE_SOURCE_DIR}/imgui_ui/*.cpp"
+    "${CMAKE_SOURCE_DIR}/imgui_ui/core/*.cpp"
 )
 
 file(GLOB IMGUI_UI_HEADERS
-    "${CMAKE_SOURCE_DIR}/../imgui_ui/*.h"
+    "${CMAKE_SOURCE_DIR}/imgui_ui/*.h"
+    "${CMAKE_SOURCE_DIR}/imgui_ui/core/*.h"
+    "${CMAKE_SOURCE_DIR}/imgui_ui/ui/*.h"
 )
 
 # ========================================
@@ -126,6 +137,7 @@ target_link_libraries(${PROJECT_NAME}
     implot_lib
     glfw
     opengl32  # Windows OpenGL库
+    nlohmann_json::nlohmann_json  # JSON序列化库
 )
 
 # Windows串口API
@@ -137,9 +149,16 @@ if(WIN32)
         WIN32_EXECUTABLE ON  # 隐藏控制台窗口
     )
 
-    # MinGW需要额外的链接选项来隐藏终端
-    if(MINGW)
+    # MinGW/GCC需要额外的链接选项来隐藏终端
+    if(MINGW OR CMAKE_COMPILER_IS_GNUCXX)
         target_link_options(${PROJECT_NAME} PRIVATE -mwindows)
+    endif()
+
+    # 如果使用MSVC，需要设置子系统为Windows
+    if(MSVC)
+        set_target_properties(${PROJECT_NAME} PROPERTIES
+            LINK_FLAGS "/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup"
+        )
     endif()
 endif()
 

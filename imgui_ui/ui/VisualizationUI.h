@@ -37,56 +37,40 @@ public:
     }
 
     /**
-     * @brief 渲染VOFA+风格UI（极简，单一窗口）
+     * @brief 渲染VOFA+风格UI（在当前内容区域内渲染，不创建新窗口）
      */
     void Render() {
-        ImVec2 window_size = ImGui::GetIO().DisplaySize;
-        ImGui::SetNextWindowPos(ImVec2(0, 0));
-        ImGui::SetNextWindowSize(window_size);
+        ImVec2 content_size = ImGui::GetContentRegionAvail();
 
-        ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-                                ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
-                                ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_MenuBar;
+        // === 左侧工具栏（20px） ===
+        ImGui::BeginChild("##Toolbar", ImVec2(20, content_size.y - 35), true, ImGuiWindowFlags_NoScrollbar);
+        RenderToolbar();
+        ImGui::EndChild();
 
-        if (ImGui::Begin("##MainWindow", nullptr, flags)) {
-            // 顶部菜单栏
-            if (ImGui::BeginMenuBar()) {
-                ImGui::TextColored(ImVec4(0.26f, 0.59f, 0.98f, 1.0f), "串口调试助手 - 实时可视化");
-                ImGui::EndMenuBar();
-            }
+        ImGui::SameLine();
 
-            ImVec2 content_size = ImGui::GetContentRegionAvail();
+        // === 中间波形区（主要区域） ===
+        float waveform_width = content_size.x - 220; // 减去左栏20px和右栏200px
+        ImGui::BeginChild("##Waveform", ImVec2(waveform_width, content_size.y - 35), true);
+        RenderWaveform();
+        ImGui::EndChild();
 
-            // === 左侧工具栏（20px） ===
-            ImGui::BeginChild("##Toolbar", ImVec2(20, content_size.y - 35), true, ImGuiWindowFlags_NoScrollbar);
-            RenderToolbar();
-            ImGui::EndChild();
+        ImGui::SameLine();
 
-            ImGui::SameLine();
+        // === 右侧通道列表（200px） ===
+        ImGui::BeginChild("##ChannelList", ImVec2(200, content_size.y - 35), true);
+        RenderChannelList();
+        ImGui::EndChild();
 
-            // === 中间波形区（主要区域） ===
-            float waveform_width = content_size.x - 220; // 减去左栏20px和右栏200px
-            ImGui::BeginChild("##Waveform", ImVec2(waveform_width, content_size.y - 35), true);
-            RenderWaveform();
-            ImGui::EndChild();
-
-            ImGui::SameLine();
-
-            // === 右侧通道列表（200px） ===
-            ImGui::BeginChild("##ChannelList", ImVec2(200, content_size.y - 35), true);
-            RenderChannelList();
-            ImGui::EndChild();
-
-            // === 底部参数栏（30px） ===
-            ImGui::BeginChild("##StatusBar", ImVec2(content_size.x, 30), true, ImGuiWindowFlags_NoScrollbar);
-            RenderStatusBar();
-            ImGui::EndChild();
-        }
-        ImGui::End();
+        // === 底部参数栏（30px） ===
+        ImGui::BeginChild("##StatusBar", ImVec2(content_size.x, 30), true, ImGuiWindowFlags_NoScrollbar);
+        RenderStatusBar();
+        ImGui::EndChild();
     }
 
     DataChannelManager& GetChannelManager() { return channel_manager_; }
     ProtocolParser* GetProtocolParser() { return protocol_parser_.get(); }
+    const ProtocolParser* GetProtocolParser() const { return protocol_parser_.get(); }
 
     void SetProtocolType(ProtocolType type) {
         if (type == current_protocol_type_) return;
