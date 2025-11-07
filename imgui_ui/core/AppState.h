@@ -26,6 +26,43 @@ enum class ViewType {
     WAVEFORM,         // 波形显示
 };
 
+// 编码类型枚举
+enum class EncodingType {
+    UTF8,      // UTF-8编码（默认）
+    GBK,       // GBK/GB2312编码
+    ASCII,     // 纯ASCII
+};
+
+// 行尾符类型枚举
+enum class LineEnding {
+    NONE,      // 无后缀
+    CR,        // \r
+    LF,        // \n
+    CRLF,      // \r\n
+};
+
+// 数据方向枚举
+enum class DataDirection {
+    RX,        // 接收数据
+    TX,        // 发送数据
+};
+
+// 数据显示模式枚举
+enum class DataDisplayMode {
+    NORMAL,          // 正常模式（每条数据独立显示）
+    COMPACT,         // 紧凑模式（合并相同时间戳的数据）
+    TIMESTAMP_ONLY,  // 时间戳模式（仅显示时间戳+数据统计）
+};
+
+// 数据日志条目（用于分色显示收发数据）
+struct DataLogEntry {
+    std::string timestamp;      // 时间戳 "[HH:MM:SS.mmm]"
+    std::string content;        // 数据内容
+    DataDirection direction;    // 数据方向（RX/TX）
+
+    DataLogEntry() : direction(DataDirection::RX) {}
+};
+
 // 应用程序状态
 struct AppState {
     // 当前视图
@@ -59,6 +96,28 @@ struct AppState {
     bool hex_send = false;
     bool auto_scroll = true;
     bool scroll_to_bottom = false;  // 标记需要滚动到底部
+
+    // 新增：分色显示收发数据
+    std::vector<DataLogEntry> data_log;  // 数据日志（替代单一缓冲区）
+    std::mutex log_mutex;                // 日志互斥锁
+    size_t max_log_entries = 10000;      // 最大日志条数
+
+    // 新增：编码和时间戳配置
+    EncodingType encoding_type = EncodingType::UTF8;  // 编码类型
+    bool show_timestamp = true;                        // 显示时间戳
+    DataDisplayMode display_mode = DataDisplayMode::COMPACT;  // 显示模式（默认紧凑）
+    int log_merge_window_ms = 10;                      // 日志合并时间窗口（毫秒）
+
+    // 新增：发送后缀配置
+    LineEnding send_line_ending = LineEnding::NONE;    // 行尾符
+    bool enable_custom_prefix = false;                 // 启用自定义前缀
+    bool enable_custom_suffix = false;                 // 启用自定义后缀
+    char custom_prefix[64] = "";                       // 自定义前缀
+    char custom_suffix[64] = "";                       // 自定义后缀
+
+    // 新增：发送历史记录
+    std::vector<std::string> send_history;             // 发送历史（最多20条）
+    int send_history_index = -1;                       // 当前选择的历史索引
 
     // 统计信息
     int bytes_received = 0;

@@ -182,15 +182,12 @@ void RenderSidebar(AppState& state) {
     ImGui::EndChild();
 }
 
-// 添加数据到日志（支持时间戳和方向）
+// 添加数据到日志（支持时间戳和方向，自动合并相同时间戳）
 void AddDataLog(AppState* state, const std::string& content, DataDirection direction) {
     std::lock_guard<std::mutex> lock(state->log_mutex);
 
-    DataLogEntry entry;
-    entry.direction = direction;
-    entry.content = content;
-
     // 生成时间戳
+    std::string timestamp;
     if (state->show_timestamp) {
         auto now = std::chrono::system_clock::now();
         auto now_c = std::chrono::system_clock::to_time_t(now);
@@ -200,10 +197,40 @@ void AddDataLog(AppState* state, const std::string& content, DataDirection direc
         struct tm timeinfo;
         localtime_s(&timeinfo, &now_c);
         char buf[32];
-        sprintf(buf, "[%02d:%02d:%02d.%03d]",
-                timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, (int)ms.count());
-        entry.timestamp = buf;
+
+        // 根据显示模式决定时间戳精度
+        if (state->display_mode == DataDisplayMode::COMPACT) {
+            // 紧凑模式：使用毫秒精度以便合并
+            sprintf(buf, "[%02d:%02d:%02d.%03d]",
+                    timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, (int)ms.count());
+        } else {
+            // 正常模式：秒级精度
+            sprintf(buf, "[%02d:%02d:%02d]",
+                    timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+        }
+        timestamp = buf;
     }
+
+    // 紧凑模式：尝试合并到上一条记录
+    if (state->display_mode == DataDisplayMode::COMPACT &&
+        !state->data_log.empty()) {
+
+        DataLogEntry& last_entry = state->data_log.back();
+
+        // 如果时间戳相同且方向相同，合并内容
+        if (last_entry.timestamp == timestamp &&
+            last_entry.direction == direction) {
+            last_entry.content += "\n" + content;
+            state->scroll_to_bottom = true;
+            return;
+        }
+    }
+
+    // 创建新日志条目
+    DataLogEntry entry;
+    entry.direction = direction;
+    entry.content = content;
+    entry.timestamp = timestamp;
 
     // 添加到日志
     state->data_log.push_back(entry);
@@ -473,12 +500,21 @@ void RenderDataDisplayPanel(AppState& state) {
         state.bytes_received = 0;
     }
 
-    // 第二行：编码选择、日志控制
+    // 第二行：编码选择、显示模式、日志控制
     ImGui::PushItemWidth(120);
     const char* encodings[] = { "UTF-8", "GBK", "ASCII" };
     int encoding_index = static_cast<int>(state.encoding_type);
     if (ImGui::Combo("编码", &encoding_index, encodings, 3)) {
         state.encoding_type = static_cast<EncodingType>(encoding_index);
+    }
+    ImGui::PopItemWidth();
+
+    ImGui::SameLine();
+    ImGui::PushItemWidth(120);
+    const char* display_modes[] = { "正常", "紧凑", "时间戳" };
+    int display_mode_index = static_cast<int>(state.display_mode);
+    if (ImGui::Combo("显示模式", &display_mode_index, display_modes, 3)) {
+        state.display_mode = static_cast<DataDisplayMode>(display_mode_index);
     }
     ImGui::PopItemWidth();
 
@@ -529,12 +565,55 @@ void RenderDataDisplayPanel(AppState& state) {
                     prefix = "TX";
                 }
 
-                // 显示格式：[时间戳] RX/TX: 数据内容
+                // 显示时间戳（如果启用）
                 if (state.show_timestamp && !entry.timestamp.empty()) {
                     ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "%s", entry.timestamp.c_str());
                     ImGui::SameLine();
+                    ImGui::TextColored(color, "%s:", prefix);
+                } else {
+                    ImGui::TextColored(color, "%s:", prefix);
                 }
-                ImGui::TextColored(color, "%s: %s", prefix, entry.content.c_str());
+
+                // 处理多行内容（紧凑模式下可能有换行）
+                if (state.display_mode == DataDisplayMode::COMPACT &&
+                    entry.content.find('\n') != std::string::npos) {
+                    // 内容包含换行，逐行显示
+                    std::string content_copy = entry.content;
+                    size_t start = 0;
+                    size_t pos = 0;
+                    bool first_line = true;
+
+                    while ((pos = content_copy.find('\n', start)) != std::string::npos) {
+                        std::string line = content_copy.substr(start, pos - start);
+                        if (first_line) {
+                            ImGui::SameLine();
+                            ImGui::Text("%s", line.c_str());
+                            first_line = false;
+                        } else {
+                            ImGui::Indent(16.0f);  // 缩进对齐
+                            ImGui::TextColored(color, "    %s", line.c_str());
+                            ImGui::Unindent(16.0f);
+                        }
+                        start = pos + 1;
+                    }
+
+                    // 显示最后一行（如果有）
+                    if (start < content_copy.length()) {
+                        std::string line = content_copy.substr(start);
+                        if (first_line) {
+                            ImGui::SameLine();
+                            ImGui::Text("%s", line.c_str());
+                        } else {
+                            ImGui::Indent(16.0f);
+                            ImGui::TextColored(color, "    %s", line.c_str());
+                            ImGui::Unindent(16.0f);
+                        }
+                    }
+                } else {
+                    // 单行内容，直接显示
+                    ImGui::SameLine();
+                    ImGui::Text("%s", entry.content.c_str());
+                }
             }
         }
     }
