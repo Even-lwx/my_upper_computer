@@ -5,10 +5,10 @@
  * @date 2025
  *
  * 布局：
- * - 左侧：极窄工具栏
+ * - 左侧：配置面板（协议、通道、参数）
  * - 中间：大波形显示区
  * - 右侧：紧凑通道列表
- * - 底部：协议参数栏
+ * - 底部：简化状态栏
  */
 
 #ifndef VISUALIZATION_UI_H
@@ -43,27 +43,27 @@ public:
     void Render() {
         ImVec2 content_size = ImGui::GetContentRegionAvail();
 
-        // === 左侧工具栏（20px） ===
-        ImGui::BeginChild("##Toolbar", ImVec2(20, content_size.y - 35), true, ImGuiWindowFlags_NoScrollbar);
-        RenderToolbar();
+        // === 左侧配置面板（130px） ===
+        ImGui::BeginChild("##ConfigPanel", ImVec2(130, content_size.y - 35), true, ImGuiWindowFlags_NoScrollbar);
+        RenderConfigPanel();
         ImGui::EndChild();
 
         ImGui::SameLine();
 
         // === 中间波形区（主要区域） ===
-        float waveform_width = content_size.x - 220; // 减去左栏20px和右栏200px
+        float waveform_width = content_size.x - 340; // 减去左栏130px和右栏210px
         ImGui::BeginChild("##Waveform", ImVec2(waveform_width, content_size.y - 35), true);
         RenderWaveform();
         ImGui::EndChild();
 
         ImGui::SameLine();
 
-        // === 右侧通道列表（200px） ===
-        ImGui::BeginChild("##ChannelList", ImVec2(200, content_size.y - 35), true);
+        // === 右侧通道列表（210px） ===
+        ImGui::BeginChild("##ChannelList", ImVec2(210, content_size.y - 35), true);
         RenderChannelList();
         ImGui::EndChild();
 
-        // === 底部参数栏（30px） ===
+        // === 底部状态栏（30px） ===
         ImGui::BeginChild("##StatusBar", ImVec2(content_size.x, 30), true, ImGuiWindowFlags_NoScrollbar);
         RenderStatusBar();
         ImGui::EndChild();
@@ -117,12 +117,73 @@ public:
 
 private:
     /**
-     * @brief 渲染左侧工具栏（极简图标）
+     * @brief 渲染左侧配置面板（VOFA+风格）
      */
-    void RenderToolbar() {
-        // 暂时只显示一个标识
-        ImGui::SetCursorPosY(10);
-        ImGui::TextColored(ImVec4(0.26f, 0.59f, 0.98f, 1.0f), "V");
+    void RenderConfigPanel() {
+        // 面板标题
+        ImGui::TextColored(ImVec4(0.26f, 0.59f, 0.98f, 1.0f), "协议配置");
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // === 数据引擎选择 ===
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("数据引擎:");
+        ImGui::SetNextItemWidth(-FLT_MIN);  // 填满剩余宽度
+        const char* protocols[] = {"FireWater", "JustFloat", "RawData", "CSV", "Custom"};
+        int current = static_cast<int>(current_protocol_type_);
+        if (ImGui::Combo("##protocol", &current, protocols, IM_ARRAYSIZE(protocols))) {
+            SetProtocolType(static_cast<ProtocolType>(current));
+        }
+
+        ImGui::Spacing();
+
+        // === 通道数配置 ===
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("通道数:");
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        int temp_channel_count = channel_count_;
+        if (ImGui::InputInt("##channels", &temp_channel_count, 1, 1)) {
+            // 限制范围：1-16通道
+            if (temp_channel_count < 1) temp_channel_count = 1;
+            if (temp_channel_count > 16) temp_channel_count = 16;
+
+            if (temp_channel_count != channel_count_) {
+                channel_count_ = temp_channel_count;
+
+                // 更新协议解析器的通道数
+                if (protocol_parser_) {
+                    protocol_parser_->SetExpectedChannelCount(channel_count_);
+                }
+
+                // 自动启用相应数量的通道
+                for (size_t i = 0; i < DataChannelManager::MAX_CHANNELS; i++) {
+                    channel_manager_.SetChannelEnabled(i, static_cast<int>(i) < channel_count_);
+                }
+            }
+        }
+
+        ImGui::Spacing();
+
+        // === 采样间隔显示 ===
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("采样间隔:");
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        ImGui::InputInt("##dt", &sample_interval_ms_, 0, 0, ImGuiInputTextFlags_ReadOnly);
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // === X轴范围滑块 ===
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("X轴范围:");
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        ImGui::SliderFloat("##xrange", &x_axis_range_, 1.0f, 60.0f, "%.1fs");
+
+        ImGui::Spacing();
+
+        // === Y轴自动缩放 ===
+        ImGui::Checkbox("Y轴自动缩放", &auto_scale_y_);
     }
 
     /**
@@ -227,7 +288,7 @@ private:
     }
 
     /**
-     * @brief 渲染底部状态栏（紧凑参数）
+     * @brief 渲染底部状态栏（简化版本）
      */
     void RenderStatusBar() {
         // 计算总数据点数（所有启用通道）
@@ -240,66 +301,29 @@ private:
             }
         }
 
-        // 协议选择
-        const char* protocols[] = {"FireWater", "JustFloat", "RawData", "CSV", "Custom"};
-        int current = static_cast<int>(current_protocol_type_);
-
-        // X轴时间范围配置
-        ImGui::Text("X轴范围:");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(100);
-        ImGui::SliderFloat("##xrange", &x_axis_range_, 1.0f, 60.0f, "%.1fs");
-
-        ImGui::SameLine();
-        ImGui::Text("  总点数:");
+        // 显示统计信息
+        ImGui::Text("总点数:");
         ImGui::SameLine();
         ImGui::TextColored(ImVec4(0.30f, 0.70f, 1.00f, 1.0f), "%zu", total_points);
-
-        ImGui::SameLine();
-        ImGui::Text("  Δt:");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(60);
-        ImGui::InputInt("##dt", &sample_interval_ms_, 0, 0, ImGuiInputTextFlags_ReadOnly);
-        ImGui::SameLine();
-        ImGui::Text("ms");
 
         ImGui::SameLine();
         ImGui::Dummy(ImVec2(20, 0));
         ImGui::SameLine();
 
-        // 通道数配置
+        // 显示当前协议
+        const char* protocol_name = GetProtocolName(current_protocol_type_).c_str();
+        ImGui::Text("协议:");
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.3f, 0.8f, 0.3f, 1.0f), "%s", protocol_name);
+
+        ImGui::SameLine();
+        ImGui::Dummy(ImVec2(20, 0));
+        ImGui::SameLine();
+
+        // 显示通道数
         ImGui::Text("通道数:");
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(60);
-        int temp_channel_count = channel_count_;
-        if (ImGui::InputInt("##channels", &temp_channel_count, 1, 1)) {
-            // 限制范围：1-16通道
-            if (temp_channel_count < 1) temp_channel_count = 1;
-            if (temp_channel_count > 16) temp_channel_count = 16;
-
-            if (temp_channel_count != channel_count_) {
-                channel_count_ = temp_channel_count;
-
-                // 更新协议解析器的通道数
-                if (protocol_parser_) {
-                    protocol_parser_->SetExpectedChannelCount(channel_count_);
-                }
-
-                // 自动启用相应数量的通道
-                for (size_t i = 0; i < DataChannelManager::MAX_CHANNELS; i++) {
-                    channel_manager_.SetChannelEnabled(i, static_cast<int>(i) < channel_count_);
-                }
-            }
-        }
-
-        ImGui::SameLine();
-        ImGui::Dummy(ImVec2(10, 0));
-        ImGui::SameLine();
-
-        ImGui::SetNextItemWidth(100);
-        if (ImGui::Combo("##protocol", &current, protocols, IM_ARRAYSIZE(protocols))) {
-            SetProtocolType(static_cast<ProtocolType>(current));
-        }
+        ImGui::TextColored(ImVec4(0.8f, 0.6f, 0.3f, 1.0f), "%d", channel_count_);
     }
 
     DataChannelManager channel_manager_;
