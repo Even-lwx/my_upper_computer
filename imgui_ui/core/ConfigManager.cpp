@@ -148,6 +148,10 @@ json ConfigManager::SerializeUI(const AppState& state) {
     j["hex_send"] = state.hex_send;
     j["auto_scroll"] = state.auto_scroll;
 
+    // 编码和时间戳设置
+    j["encoding_type"] = static_cast<int>(state.encoding_type);
+    j["show_timestamp"] = state.show_timestamp;
+
     // 日志设置
     j["enable_logging"] = state.enable_logging;
     j["log_filename"] = state.log_filename;
@@ -156,6 +160,16 @@ json ConfigManager::SerializeUI(const AppState& state) {
     j["enable_auto_send"] = state.enable_auto_send;
     j["auto_send_interval_ms"] = state.auto_send_interval_ms;
     j["send_buffer"] = std::string(state.send_buffer);
+
+    // 发送后缀配置
+    j["send_line_ending"] = static_cast<int>(state.send_line_ending);
+    j["enable_custom_prefix"] = state.enable_custom_prefix;
+    j["enable_custom_suffix"] = state.enable_custom_suffix;
+    j["custom_prefix"] = std::string(state.custom_prefix);
+    j["custom_suffix"] = std::string(state.custom_suffix);
+
+    // 发送历史
+    j["send_history"] = state.send_history;
 
     return j;
 }
@@ -170,6 +184,11 @@ void ConfigManager::DeserializeUI(AppState& state, const json& j) {
     state.hex_send = SafeGet<bool>(j, "hex_send", false);
     state.auto_scroll = SafeGet<bool>(j, "auto_scroll", true);
 
+    // 编码和时间戳设置
+    int encoding_type = SafeGet<int>(j, "encoding_type", 0);
+    state.encoding_type = static_cast<EncodingType>(encoding_type);
+    state.show_timestamp = SafeGet<bool>(j, "show_timestamp", true);
+
     // 日志设置
     state.enable_logging = SafeGet<bool>(j, "enable_logging", false);
     state.log_filename = SafeGet<std::string>(j, "log_filename", "");
@@ -182,6 +201,35 @@ void ConfigManager::DeserializeUI(AppState& state, const json& j) {
     std::string send_buffer_str = SafeGet<std::string>(j, "send_buffer", "");
     if (!send_buffer_str.empty() && send_buffer_str.length() < sizeof(state.send_buffer)) {
         strcpy_s(state.send_buffer, sizeof(state.send_buffer), send_buffer_str.c_str());
+    }
+
+    // 发送后缀配置
+    int line_ending = SafeGet<int>(j, "send_line_ending", 0);
+    state.send_line_ending = static_cast<LineEnding>(line_ending);
+    state.enable_custom_prefix = SafeGet<bool>(j, "enable_custom_prefix", false);
+    state.enable_custom_suffix = SafeGet<bool>(j, "enable_custom_suffix", false);
+
+    std::string custom_prefix_str = SafeGet<std::string>(j, "custom_prefix", "");
+    if (custom_prefix_str.length() < sizeof(state.custom_prefix)) {
+        strcpy_s(state.custom_prefix, sizeof(state.custom_prefix), custom_prefix_str.c_str());
+    }
+
+    std::string custom_suffix_str = SafeGet<std::string>(j, "custom_suffix", "");
+    if (custom_suffix_str.length() < sizeof(state.custom_suffix)) {
+        strcpy_s(state.custom_suffix, sizeof(state.custom_suffix), custom_suffix_str.c_str());
+    }
+
+    // 发送历史
+    if (j.contains("send_history") && j["send_history"].is_array()) {
+        state.send_history.clear();
+        for (const auto& item : j["send_history"]) {
+            if (item.is_string()) {
+                std::string history_item = item.get<std::string>();
+                if (!history_item.empty()) {
+                    state.send_history.push_back(history_item);
+                }
+            }
+        }
     }
 }
 
