@@ -1,14 +1,18 @@
-# 编译输出
+# 编译输出目录
 build/
-build_imgui/
-build_qt/
-bin/
-*.exe
-*.dll
-*.so
-*.dylib
+
+# 发布目录（保留目录结构，忽略可执行文件）
+Release/*.exe
+Release/*.dll
+Release/*.so
+Release/*.dylib
+Release/lib/
+
+# 临时文件
 *.a
 *.lib
+nul
+imgui.ini
 
 # IDE
 .vscode/
